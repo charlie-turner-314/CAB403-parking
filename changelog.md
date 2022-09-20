@@ -6,6 +6,8 @@ All signficant changes should be noted here to help us keep track of everything 
 
 Anything currently being worked on
 
+- adding hashtable for storing number plates, don't think we need key/value, basically just an array
+
 ## [x.x.x] - yyyy-mm-dd
 
 ### Added

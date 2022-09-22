@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdlib.h>
+#include <stdbool.h>
 
 // An item in the hash table
 // Multiple items can have the same hash value
@@ -27,13 +27,17 @@ item_t *htab_bucket(ht_t *h, char *key);
 
 // Find the item for key in hash table
 // For this use case, could simply return bool, however for extendability will
-// return the item
+// return the item or NULL if the item does not exist
 item_t *htab_find(ht_t *h, char *key);
 
 // Add an item to the hash table
+// OR update value if exists
 // allocate memory for the item and add it to the hash table
-bool htab_add(ht_t *h, char *key);
+bool htab_set(ht_t *h, char *key, int value);
 
 // Remove an item from the hash table
 // free the memory allocated for the item
 bool htab_remove(ht_t *h, char *key);
+
+// Increase the size of the hash table to 2n+1
+bool htab_resize(ht_t *h);

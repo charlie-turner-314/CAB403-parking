@@ -50,6 +50,7 @@ void htab_destroy(ht_t *h)
         {
             item_t *tmp = current;
             item_t *next = current->next;
+            // key is a pointer so must free the memory allocated for it
             free(current->key);
             free(tmp);
             current = next;
@@ -57,8 +58,6 @@ void htab_destroy(ht_t *h)
     }
     // Free the memory allocated for the buckets
     free(h->buckets);
-    // Free the memory allocated for the hash table
-    free(h);
 }
 
 size_t djb_hash(char *s)
@@ -70,7 +69,6 @@ size_t djb_hash(char *s)
         // hash = hash * 33 + c
         hash = ((hash << 5) + hash) + c;
     }
-    printf("Hash: %zu\n", hash);
     return hash;
 }
 
@@ -124,8 +122,7 @@ bool htab_set(ht_t *h, char *key, int value)
     }
 
     // allocate memory for the new item
-    item_t *new_item = malloc(sizeof(*new_item));
-    printf("New item");
+    item_t *new_item = (item_t *)malloc(sizeof(item_t));
 
     // if the memory allocation failed, return false
     if (new_item == NULL)
@@ -134,9 +131,9 @@ bool htab_set(ht_t *h, char *key, int value)
         return false;
     }
     // allocate memory for the key (+ 1 for the null terminator)
-    new_item->key = calloc(strlen(key) + 1, sizeof(char));
+    new_item->key = (char *)malloc(6 * sizeof(char));
     // set the key
-    memccpy(new_item->key, key, '\0', strlen(key));
+    strncpy(new_item->key, key, 6);
     // set the value
     new_item->value = value;
 
@@ -211,13 +208,11 @@ bool htab_resize(ht_t *h)
     // go through each existing bucket
     for (size_t i = 0; i < h->capacity; i++)
     {
-        printf("Bucket %zu\n", i);
         // the current item
         item_t *item = h->buckets[i];
         // go through each item in the bucket
         while (item != NULL)
         {
-            printf("Item: key: %s, value: %d \n", item->key, item->value);
             item_count++;
             item_t *next = item->next; // save the next item
 
@@ -282,53 +277,4 @@ size_t htab_capacity(ht_t *h)
 size_t htab_size(ht_t *h)
 {
     return h->size;
-}
-
-// // testing
-int main()
-{
-    ht_t *table = malloc(sizeof(*table));
-    if (!htab_init(table, 10))
-    {
-        return 1;
-    }
-    printf("Table created with %zu buckets and capacity of %zu\n", table->size, table->capacity);
-    // char key[4];
-    // for (int i = 0; i < 100; i++)
-    // {
-    //     key[0] = 'A' + (i % 26);
-    //     key[1] = 'A' + ((i % 26) % 26);
-    //     key[2] = 'A' + ((i % 676) % 26);
-    //     key[3] = '\0';
-    //     htab_set(table, &key, i);
-    // }
-    htab_set(table, "A", 1);
-
-    // htab_set(table, "B", 3);
-
-    // htab_set(table, "C", 3);
-
-    // htab_set(table, "A1", 1);
-
-    // htab_set(table, "B1", 3);
-    // htab_set(table, "C1", 3);
-    // htab_set(table, "A2", 1);
-    // htab_set(table, "B2", 3);
-    // htab_set(table, "C2", 3);
-    // htab_set(table, "A3", 1);
-    // htab_set(table, "B3", 3);
-    // htab_set(table, "C3", 3);
-    // htab_set(table, "A4", 1);
-    // htab_set(table, "B4", 3);
-    // htab_set(table, "C4", 3);
-    // htab_set(table, "A5", 1);
-    //    htab_set(table, "B5", 3);
-    //    htab_set(table, "C5", 3);
-
-    printf("Table size: %zu\n", table->size);
-
-    htab_print(table);
-
-    htab_destroy(table);
-    return 0;
 }

@@ -48,3 +48,7 @@ size_t htab_capacity(ht_t *h);
 
 // number of items
 size_t htab_size(ht_t *h);
+
+void item_print(item_t *item);
+
+void htab_print(ht_t *h);

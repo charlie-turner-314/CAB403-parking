@@ -27,6 +27,8 @@ bool htab_init(ht_t *h, size_t n)
 {
     // Allocate memory for the buckets
     h->buckets = calloc(n, sizeof(item_t *));
+    if (h->buckets == NULL)
+        return false;
     h->size = 0;     // no items yet
     h->capacity = n; // allocated for this many
     // if the memory allocation failed, return 0 (false), else return true
@@ -41,14 +43,15 @@ bool htab_init(ht_t *h, size_t n)
 void htab_destroy(ht_t *h)
 {
     // Free the memory allocated for each item
-    for (size_t i = 0; i < h->size; i++)
+    for (size_t i = 0; i < h->capacity; i++)
     {
         item_t *current = h->buckets[i];
         while (current != NULL)
         {
+            item_t *tmp = current;
             item_t *next = current->next;
             free(current->key);
-            free(current);
+            free(tmp);
             current = next;
         }
     }
@@ -67,21 +70,19 @@ size_t djb_hash(char *s)
         // hash = hash * 33 + c
         hash = ((hash << 5) + hash) + c;
     }
+    printf("Hash: %zu\n", hash);
     return hash;
 }
 
 size_t htab_index(ht_t *h, char *key)
 {
-    if (h->size == 0)
-    {
-        return 0;
-    }
-    return djb_hash(key) % h->size;
+    return djb_hash(key) % h->capacity;
 }
 
 item_t *htab_bucket(ht_t *h, char *key)
 {
-    return h->buckets[htab_index(h, key)];
+    size_t index = htab_index(h, key);
+    return h->buckets[index];
 }
 
 item_t *htab_find(ht_t *h, char *key)
@@ -116,7 +117,7 @@ bool htab_set(ht_t *h, char *key, int value)
     if ((h->size + 1.0) / h->capacity >= LOAD_FACTOR)
     {
         // resize the table, if it fails, return false
-        if (htab_resize(h) == false)
+        if (!htab_resize(h))
         {
             return false;
         }
@@ -124,6 +125,8 @@ bool htab_set(ht_t *h, char *key, int value)
 
     // allocate memory for the new item
     item_t *new_item = malloc(sizeof(*new_item));
+    printf("New item");
+
     // if the memory allocation failed, return false
     if (new_item == NULL)
     {
@@ -187,11 +190,13 @@ bool htab_remove(ht_t *h, char *key)
 bool htab_resize(ht_t *h)
 {
     size_t new_capacity = h->capacity * 2 + 1;
+
     // NOTE: check for possible overflow error
     if (new_capacity < h->capacity)
     {
         return false;
     }
+
     // allocate memory for new size
     item_t **new_buckets = calloc(new_capacity, sizeof(item_t *));
     if (!new_buckets)
@@ -200,6 +205,7 @@ bool htab_resize(ht_t *h)
         return false;
     }
 
+    // number of items
     size_t item_count = 0;
 
     // go through each existing bucket
@@ -217,9 +223,11 @@ bool htab_resize(ht_t *h)
 
             // get the new bucket for the item
             size_t new_bucket = djb_hash(item->key) % new_capacity;
-            // set the next item in the bucket to the new item
+
+            // Insert at head of linked list
+            // point the next item to the current head
             item->next = new_buckets[new_bucket];
-            // set the bucket to the new item
+            // set the bucket to point to the new item
             new_buckets[new_bucket] = item;
 
             // go to next item in existing bucket
@@ -239,12 +247,12 @@ bool htab_resize(ht_t *h)
 // for debugging, print the hash table
 void item_print(item_t *item)
 {
-    printf("key: %s, value: %d\n", item->key, item->value);
+    printf("key: %s, value: %d", item->key, item->value);
 }
 
 void htab_print(ht_t *h)
 {
-    for (size_t i = 0; i < h->size; ++i)
+    for (size_t i = 0; i < h->capacity; ++i)
     {
         printf("bucket %zu: ", i);
         if (h->buckets[i] == NULL)
@@ -266,51 +274,61 @@ void htab_print(ht_t *h)
     }
 }
 
+size_t htab_capacity(ht_t *h)
+{
+    return h->capacity;
+}
+
+size_t htab_size(ht_t *h)
+{
+    return h->size;
+}
+
 // // testing
-// int main()
-// {
-//     ht_t *table = malloc(sizeof(*table));
-//     htab_init(table, 10);
-//     printf("Table created with %zu buckets and capacity of %zu\n", table->size, table->capacity);
-//     // char key[4];
-//     // for (int i = 0; i < 100; i++)
-//     // {
-//     //     key[0] = 'A' + (i % 26);
-//     //     key[1] = 'A' + ((i % 26) % 26);
-//     //     key[2] = 'A' + ((i % 676) % 26);
-//     //     key[3] = '\0';
-//     //     htab_set(table, &key, i);
-//     // }
-//     htab_set(table, "A", 1);
-//     htab_set(table, "B", 3);
-//     htab_set(table, "C", 3);
-//     htab_set(table, "A1", 1);
-//     htab_set(table, "B1", 3);
-//     htab_set(table, "C1", 3);
-//     htab_set(table, "A2", 1);
-//     htab_set(table, "B2", 3);
-//     htab_set(table, "C2", 3);
-//     // htab_set(table, "A3", 1);
-//     // htab_set(table, "B3", 3);
-//     // htab_set(table, "C3", 3);
-//     // htab_set(table, "A4", 1);
-//     // htab_set(table, "B4", 3);
-//     // htab_set(table, "C4", 3);
-//     // htab_set(table, "A5", 1);
-//     //    htab_set(table, "B5", 3);
-//     //    htab_set(table, "C5", 3);
+int main()
+{
+    ht_t *table = malloc(sizeof(*table));
+    if (!htab_init(table, 10))
+    {
+        return 1;
+    }
+    printf("Table created with %zu buckets and capacity of %zu\n", table->size, table->capacity);
+    // char key[4];
+    // for (int i = 0; i < 100; i++)
+    // {
+    //     key[0] = 'A' + (i % 26);
+    //     key[1] = 'A' + ((i % 26) % 26);
+    //     key[2] = 'A' + ((i % 676) % 26);
+    //     key[3] = '\0';
+    //     htab_set(table, &key, i);
+    // }
+    htab_set(table, "A", 1);
 
-//     printf("Table size: %zu\n", table->size);
+    // htab_set(table, "B", 3);
 
-//     item_t *item = htab_find(table, "A");
+    // htab_set(table, "C", 3);
 
-//     if (item != NULL)
-//     {
-//         printf("Item found: key: %s, value: %d\n", item->key, item->value);
-//     }
+    // htab_set(table, "A1", 1);
 
-//     htab_print(table);
+    // htab_set(table, "B1", 3);
+    // htab_set(table, "C1", 3);
+    // htab_set(table, "A2", 1);
+    // htab_set(table, "B2", 3);
+    // htab_set(table, "C2", 3);
+    // htab_set(table, "A3", 1);
+    // htab_set(table, "B3", 3);
+    // htab_set(table, "C3", 3);
+    // htab_set(table, "A4", 1);
+    // htab_set(table, "B4", 3);
+    // htab_set(table, "C4", 3);
+    // htab_set(table, "A5", 1);
+    //    htab_set(table, "B5", 3);
+    //    htab_set(table, "C5", 3);
 
-//     htab_destroy(table);
-//     return 0;
-// }
+    printf("Table size: %zu\n", table->size);
+
+    htab_print(table);
+
+    htab_destroy(table);
+    return 0;
+}

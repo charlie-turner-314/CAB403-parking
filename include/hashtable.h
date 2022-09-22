@@ -41,3 +41,10 @@ bool htab_remove(ht_t *h, char *key);
 
 // Increase the size of the hash table to 2n+1
 bool htab_resize(ht_t *h);
+
+// hashtable metadata
+// total capacity
+size_t htab_capacity(ht_t *h);
+
+// number of items
+size_t htab_size(ht_t *h);

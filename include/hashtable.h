@@ -11,7 +11,7 @@ typedef struct item item_t;
 typedef struct ht ht_t;
 
 // Initialise a new hash table with n buckets
-bool htab_init(ht_t *h, size_t n);
+ht_t *htab_init(ht_t *h, size_t n);
 
 // Destroy and free mamory allocated for hash table
 void htab_destroy(ht_t *h);
@@ -26,7 +26,6 @@ size_t htab_index(ht_t *h, char *key);
 item_t *htab_bucket(ht_t *h, char *key);
 
 // Find the item for key in hash table
-// For this use case, could simply return bool, however for extendability will
 // return the item or NULL if the item does not exist
 item_t *htab_find(ht_t *h, char *key);
 
@@ -41,6 +40,12 @@ bool htab_remove(ht_t *h, char *key);
 
 // Increase the size of the hash table to 2n+1
 bool htab_resize(ht_t *h);
+
+// get the value of a particular key
+int htab_get(ht_t *h, char *key);
+
+// get the value of an item
+int item_get(item_t *item);
 
 // hashtable metadata
 // total capacity

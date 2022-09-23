@@ -1,6 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "testing.h"
 #include "hashtable.h"
 
 #define INITIAL_CAPACITY 20
@@ -78,18 +76,19 @@ bool remove_item(ht_t *h)
 int main(void)
 {
     // Initialise
+    // set color to yellow
+    printf("\033[0;33m");
+    printf("Testing Hashtable\n");
+    // reset color
+    printf("\033[0m");
     ht_t *h = NULL;
     h = htab_init(h, INITIAL_CAPACITY);
-    if (h)
-    {
-        printf("Initialise passed\n");
-    }
-    else
-    {
-        printf("Initialise failed\n");
-        exit(1);
-    }
-    // Run other tests
+
+    // Run tests
+    setlocale(LC_CTYPE, "");
+    wchar_t cross = 0x00D7;
+    wchar_t check = 0x2713;
+
     int num_tests = 6;
     bool (*funcs[6])(ht_t * h) = {
         add_item,          /*0*/
@@ -104,17 +103,33 @@ int main(void)
     {
         if ((*funcs[i])(h))
         {
-            printf("Test %d passed\n", i);
+            // set color to green
+            printf("\033[0;32m");
+            wprintf(L"%lc Test %d passed\n", check, i);
         }
         else
         {
-            printf("Test %d failed\n", i);
+            // set color to red
+            printf("\033[0;31m");
+            wprintf(L"%lc Test %d failed\n", cross, i);
         }
         num_passed++;
     }
     htab_destroy(h);
 
-    printf("Passed %d/%d tests\n", num_passed, num_tests);
+    if (num_passed == num_tests)
+    {
+        // set color to green
+        printf("\033[0;32m");
+        printf("---------------------\n");
+        printf("All Hashtable Tests passed\n");
+    }
+    else
+    {
+        // set color to red
+        printf("\033[0;31m");
+        printf("Passed %d/%d tests\n", num_passed, num_tests);
+    }
 
     return 0;
 }

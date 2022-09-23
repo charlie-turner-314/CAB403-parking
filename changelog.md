@@ -2,13 +2,20 @@
 
 All signficant changes should be noted here to help us keep track of everything going on.
 
-## [Unreleased] - yyyy-mm-dd
+## [Unreleased] - dd/mm
 
 Anything currently being worked on
 
 - adding hashtable for storing number plates, key: string, value: integer
 
-## [x.x.x] - yyyy-mm-dd
+## [0.0.1] - 23/9
+
+### Added
+
+- Hashtable implementation to store licence plates
+- Framework for testing the library functions we create
+
+## [x.x.x] - dd/mm
 
 ### Added
 

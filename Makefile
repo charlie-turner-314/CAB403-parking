@@ -1,48 +1,56 @@
-# name of executable
-TARGET_EXEC ?= main.out
-
-TEST_EXEC ?= test.out
 
 # path to build to
 BUILD_DIR ?= ./build
 
-# path(s) to source files
-SRC_DIRS ?= ./src ./include ./test
+# path to object files
+OBJ_DIR ?= $(BUILD_DIR)/obj
 
-# path(s) to all the source files
+# path to store the executables
+MAIN_EXEC_DIR = $(BUILD_DIR)/bin
+TEST_EXEC_DIR = $(BUILD_DIR)/test
+
+# directories with source files
+SRC_DIRS ?= src libs test
+
+# path(s) to literally all the source files
 SRCS := $(shell find $(SRC_DIRS) -name *.c)
-OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
+# path(s) to all the object files (may not actually exist at this time)
+OBJS := $(SRCS:%.c=$(OBJ_DIR)/%.o)
+# path(s) to all the dependency files (may not actually exist at this time)
 DEPS := $(OBJS:.o=.d)
 
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror $(INC_FLAGS)
+CFLAGS = -Wall -Wextra -Werror $(INC_FLAGS) 
+
+# compile executables for C files in src directory
+main: $(foreach SRC, $(filter src/%, $(SRCS)), $(MAIN_EXEC_DIR)/$(notdir $(SRC:.c=)))
+
+# Ensure objs doesn't contain the other objects in the src directory or the test directory
+
+$(MAIN_EXEC_DIR)/% : SRCS := $(filter-out src/%, $(filter-out test/%, $(SRCS)))
+$(MAIN_EXEC_DIR)/% : OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o)
+# add the current object to the list of objects, as it was removed above
+$(MAIN_EXEC_DIR)/% : $(OBJS)
+	$(MKDIR_P) $(MAIN_EXEC_DIR)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(OBJ_DIR)/src/$*.o $(LDFLAGS)
 
 
-# DEFAULT
-main : OBJS:=$(filter-out $(BUILD_DIR)/./test/%.o, $(OBJS))
-main : $(BUILD_DIR)/$(TARGET_EXEC)
-# make the a.out file
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
-	@echo $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+# test: basically same as main but set srcs to test files instead of main files
+test: $(foreach SRC, $(filter test/%, $(SRCS)), $(TEST_EXEC_DIR)/$(notdir $(SRC:.c=)))
 
-# Should be called by all others that need to compile
-# make c source objects
-$(BUILD_DIR)/%.c.o: %.c
-	@echo "Compiling $<"
+$(TEST_EXEC_DIR)/% : SRCS := $(filter-out src/%, $(filter-out test/%, $(SRCS)))
+$(TEST_EXEC_DIR)/% : OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o)
+$(TEST_EXEC_DIR)/% : $(OBJS)
+	@echo "OBJS $(OBJS)"
+	$(MKDIR_P) $(TEST_EXEC_DIR)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(OBJ_DIR)/test/$*.o $(LDFLAGS)
+
+# Build an object file (OBJS)
+$(OBJ_DIR)/%.o: %.c
 	$(MKDIR_P) $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
-
-test: OBJS:=$(filter-out $(BUILD_DIR)/./src/main.c.o, $(OBJS))
-test : $(BUILD_DIR)/$(TEST_EXEC)  
-
-$(BUILD_DIR)/$(TEST_EXEC): $(OBJS)
-	@echo $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
-
-
 
 .PHONY: clean
 

@@ -11,6 +11,7 @@ typedef struct QItem {
 } QItem;
 
 typedef struct Queue {
+  int id;
   QItem *head;
   QItem *tail;
   pthread_mutex_t mutex;

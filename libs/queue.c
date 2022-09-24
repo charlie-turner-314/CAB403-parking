@@ -5,8 +5,9 @@
 #include <string.h>
 
 // Create a new queue.
-Queue *queue_create() {
+Queue *queue_create(int id) {
   Queue *q = malloc(sizeof(Queue));
+  q->id = id;
   q->head = NULL;
   q->tail = NULL;
   int mutex = pthread_mutex_init(&q->mutex, NULL);
@@ -23,9 +24,10 @@ Queue *queue_create() {
 }
 
 QItem *queue_peek(Queue *q) {
-  pthread_mutex_lock(&q->mutex);
+  // NOTE: removed the mutex lock but keep in mind for later if something breaks
+  // pthread_mutex_lock(&q->mutex);
   QItem *item = q->head;
-  pthread_mutex_unlock(&q->mutex);
+  // pthread_mutex_unlock(&q->mutex);
   return item;
 }
 
@@ -77,7 +79,11 @@ QItem *queue_pop(Queue *q) {
   if (q->head == NULL) {
     q->tail = NULL;
   }
+  // broadcast the condition variable
+  pthread_cond_broadcast(&q->condition);
   pthread_mutex_unlock(&q->mutex);
+  free(item->value);
+  free(item);
   return item;
 }
 

@@ -14,14 +14,14 @@ typedef struct LPR {
 typedef struct Boomgate {
   pthread_mutex_t mutex;
   pthread_cond_t condition;
-  char status[1];
+  char status;
   char padding[7];
 } Boomgate;
 
 typedef struct InfoSign {
   pthread_mutex_t mutex;
   pthread_cond_t condition;
-  char display[1];
+  char display;
   char padding[7];
 } InfoSign;
 

@@ -9,5 +9,5 @@
 #define NUM_LEVELS 5
 // How many cars are allowed on each level
 #define LEVEL_CAPACITY 20
-// how quickly time goes
-#define TIME_FACTOR 1
+// perhaps unintuitively, how much to slow time
+#define TIME_FACTOR 5

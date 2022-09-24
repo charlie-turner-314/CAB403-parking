@@ -6,7 +6,7 @@ All signficant changes should be noted here to help us keep track of everything 
 
 Anything currently being worked on
 
-- Car simulation
+- Car simulation -> should pretty much be done, just need the manager I think to test
 
 ## Added
 
@@ -17,7 +17,7 @@ Anything currently being worked on
 ### Added
 
 - Hashtable implementation to store licence plates
-- Framework for testing the library functions we create
+- Framework for testing any library/helper modules we create
 
 ## [x.x.x] - dd/mm
 

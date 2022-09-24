@@ -1,14 +1,17 @@
-
+#pragma once
 #include "hashtable.h"
+#include "queue.h"
 #include "shm_parking.h"
 
 // Simulating Cars
 // ==============
 
-// A car is a thread that enters the parking lot, parks, and leaves.
+typedef struct car_thread_data {
+  Queue *entry_queue; // pointer to the entry queue
+  char plate[7];      // number plate of the car
+} ct_data;
 
-// generate a car with a given plate
-void generate_car(char *plate);
+// A car is a thread that enters the parking lot, parks, and leaves.
 
 // place a car in the entry queue of a random entrance
 void queue_car_entry(char *plate);
@@ -26,9 +29,4 @@ void park_car(char *plate, int level);
 void exit_car(char *plate, int level);
 
 // main handler function for a car thread
-// -> wait until at front of queue
-// -> attempt entry
-// -> park the car if entry is successful
-// -> leave the level
-// -> exit at a random level
 void *car_handler(void *arg);

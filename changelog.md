@@ -6,7 +6,11 @@ All signficant changes should be noted here to help us keep track of everything 
 
 Anything currently being worked on
 
-- adding hashtable for storing number plates, key: string, value: integer
+- Car simulation
+
+## Added
+
+- Queue structure for entrances
 
 ## [0.0.1] - 23/9
 

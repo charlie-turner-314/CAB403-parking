@@ -1,13 +1,22 @@
 # CAB403-parking
 
-## include
+## Running anything
 
-&rarr; For header files
+The Makefile should be set up so that any C files in `src` are compiled individually on `make` or `make main`,
+and tests are compiled on `make test`
+
+## libs
+
+&rarr; For any utility functions to be included in the programs
 
 ## src
 
-&rarr; For the C files
+&rarr; For the main programs
 
 - Manager
 - Simulator
 - Fire Alarm
+
+## test
+
+&rarr; Testing. Hashtable_test.c contains a pretty good (imo) main function to copy for testing

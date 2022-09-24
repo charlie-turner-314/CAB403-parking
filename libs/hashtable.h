@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 // An item in the hash table
 // Multiple items can have the same hash value

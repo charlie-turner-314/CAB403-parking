@@ -1,0 +1,110 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Isrc",
+      "-Ilibs",
+      "-Itest",
+      "-c",
+      "-o",
+      "build/obj/src/simulator.o",
+      "src/simulator.c"
+    ],
+    "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/src/simulator.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/src/simulator.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Isrc",
+      "-Ilibs",
+      "-Itest",
+      "-c",
+      "-o",
+      "build/obj/src/shm_parking.o",
+      "src/shm_parking.c"
+    ],
+    "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/src/shm_parking.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/src/shm_parking.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Isrc",
+      "-Ilibs",
+      "-Itest",
+      "-c",
+      "-o",
+      "build/obj/src/manager.o",
+      "src/manager.c"
+    ],
+    "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/src/manager.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/src/manager.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Isrc",
+      "-Ilibs",
+      "-Itest",
+      "-c",
+      "-o",
+      "build/obj/src/firealarm.o",
+      "src/firealarm.c"
+    ],
+    "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/src/firealarm.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/src/firealarm.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Isrc",
+      "-Ilibs",
+      "-Itest",
+      "-c",
+      "-o",
+      "build/obj/libs/hashtable.o",
+      "libs/hashtable.c"
+    ],
+    "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/libs/hashtable.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/libs/hashtable.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-Isrc",
+      "-Ilibs",
+      "-Itest",
+      "-c",
+      "-o",
+      "build/obj/test/hashtable_test.o",
+      "test/hashtable_test.c"
+    ],
+    "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/test/hashtable_test.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/test/hashtable_test.o"
+  }
+]

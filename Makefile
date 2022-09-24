@@ -24,6 +24,11 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror $(INC_FLAGS) 
 
+# ---------------- NEED THESE ON LINUX I THINK --------------------------
+#LDFLAGS = -lrt -lpthread -lm
+
+all: main test
+
 # compile executables for C files in src directory
 main: $(foreach SRC, $(filter src/%, $(SRCS)), $(MAIN_EXEC_DIR)/$(notdir $(SRC:.c=)))
 
@@ -52,6 +57,14 @@ $(OBJ_DIR)/%.o: %.c
 	$(MKDIR_P) $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+runtests: EXECS := $(shell find $(TEST_EXEC_DIR) -type f)
+runtests: 	
+	@for exec in $(EXECS); do \
+		echo "Running $$exec"; \
+		$$exec; \
+	done
+
+
 .PHONY: clean
 
 clean:
@@ -60,3 +73,6 @@ clean:
 -include $(DEPS)
 
 MKDIR_P ?= mkdir -p
+
+# keep obj files around for a rainy day
+.SECONDARY: $(OBJS)

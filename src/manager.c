@@ -252,6 +252,8 @@ void *level_handler(void *arg) {
         exit(EXIT_FAILURE);
       }
     } else if (assigned != level_id) {
+      printf("Car %.6s arrived on level %d but allocated to level %d \n", plate,
+             level_id, assigned);
       // they are on the wrong level, re-assign them and let them in
       ts_add_cars_to_level(assigned, -1);
       ts_add_cars_to_level(level_id, 1);

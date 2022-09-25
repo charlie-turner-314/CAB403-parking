@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 // set to zero to run indefinitely
-#define MAX_CARS 2
+#define MAX_CARS 5
 
 // Node in a linked list of number plates
 typedef struct Plate {
@@ -163,7 +163,7 @@ int attempt_entry(ct_data *car_data) {
   rand_delay_ms(2, 2, &rand_mutex);
   Entrance *entrance = &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
-  int level;
+  int level_id;
   // wait on the entrance sign
   printf("Waiting on condition for entrance %d\n", car_data->entry_queue->id);
   pthread_mutex_lock(&entrance->sign.mutex);
@@ -174,31 +174,31 @@ int attempt_entry(ct_data *car_data) {
 
   printf("display is %c\n", display);
   if (display > '0' && display < '9') { // level number
-    level = display - '0';              // convert to int
-    printf("Level is %d\n", level);
+    level_id = display - '1';           // convert to level index
+    printf("Level is %d\n", level_id);
     // wait at gate if given a level
     wait_at_gate(&entrance->gate);
   } else { // Full or Not allowed Or Evacuating
-    level = -1;
+    level_id = -1;
   }
   // remove self from queue
   queue_pop(car_data->entry_queue);
-  return level;
+  return level_id;
 }
 
-void park_car(ct_data *car_data, int level) {
+void park_car(ct_data *car_data, int level_id) {
   // travel to the level (10ms)
   rand_delay_ms(10, 10, &rand_mutex);
   // signal the level that the car is there
-  send_licence_plate(car_data->plate, &car_data->shm->levels[level].lpr);
+  send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
 
   // stay parked for 100-1000ms
   rand_delay_ms(100, 1000, &rand_mutex);
 }
 
-void exit_car(ct_data *car_data, int level) {
+void exit_car(ct_data *car_data, int level_id) {
   // signal the level lpr
-  send_licence_plate(car_data->plate, &car_data->shm->levels[level].lpr);
+  send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
   // travel to the exit (10ms)
   rand_delay_ms(10, 10, &rand_mutex);
   // get random exit
@@ -239,18 +239,25 @@ void *car_handler(void *arg) {
   }
   pthread_mutex_unlock(&data->entry_queue->mutex);
   printf("%s made it to the front of the queue\n", data->plate);
-  int level = attempt_entry(data);
-  if (level == -1) {
+  int level_id = attempt_entry(data);
+  if (level_id == -1) {
     printf("%s was not allowed to enter, disintegrating\n", data->plate);
     return NULL;
   }
-  printf("%s allowed to go to level %d\n", data->plate, level);
+  printf("%s allowed to go to level %d", data->plate, level_id);
+  pthread_mutex_lock(&rand_mutex);
+  int listen = rand() % 2;
+  if (!listen) {
+    level_id = rand() % NUM_LEVELS;
+  }
+  pthread_mutex_unlock(&rand_mutex);
+  printf(", going to level %d\n", level_id);
 
   // park the car on the given level
-  park_car(data, level);
+  park_car(data, level_id);
 
   // exit the carpark
-  exit_car(data, level);
+  exit_car(data, level_id);
 
   printf("Car %s is disintegrating\n", data->plate);
   // add licence plate back in the available pool

@@ -3,7 +3,7 @@
 ## Running anything
 
 The Makefile should be set up so that any C files in `src` are compiled individually on `make` or `make main`,
-and tests are compiled on `make test`
+and tests are compiled on `make test`. If running on linux need to uncomment `LDFLAGS` in the makefile to make, should be labelled in there.
 
 ## libs
 

@@ -12,7 +12,7 @@ typedef struct item item_t;
 typedef struct ht ht_t;
 
 // Initialise a new hash table with n buckets
-ht_t *htab_init(ht_t *h, size_t n);
+ht_t *htab_create(ht_t *h, size_t n);
 
 // Destroy and free mamory allocated for hash table
 void htab_destroy(ht_t *h);

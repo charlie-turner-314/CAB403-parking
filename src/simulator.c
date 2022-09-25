@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 // set to zero to run indefinitely
-#define MAX_CARS 1
+#define MAX_CARS 2
 
 // Node in a linked list of number plates
 typedef struct Plate {
@@ -27,27 +27,25 @@ typedef struct NumberPlates {
   Plate *head;
 } NumberPlates;
 
+NumberPlates *plates;
+
 int add_plate(NumberPlates *plates, char *platestr) {
   Plate *plate = malloc(sizeof(Plate));
   if (plate == NULL) {
-    perror("Error allocating memory for plates.txt");
+    perror("Error allocating memory for plate");
     return 0;
   }
   // copy number into plate struct until null terminator or 7 characters
   memccpy(plate->plate, platestr, 0, 7);
-  plate->next = NULL;
-  if (plates->head == NULL) {
-    plates->head = plate;
-  } else {
-    plates->head->next = plate;
-  }
+  plate->next = plates->head;
+  plates->head = plate;
   plates->count++;
   return 1;
 }
 
 // read number plates from a file called "plates.txt"
 // store them in a linked list
-NumberPlates *read_plates(char *FILENAME) {
+NumberPlates *list_from_file(char *FILENAME) {
   FILE *fp = fopen(FILENAME, "r");
   if (fp == NULL) {
     perror("Error opening file");
@@ -82,18 +80,19 @@ char *random_available_plate(NumberPlates *plates) {
     allowed = 0;
   if (allowed) {
     size_t index = rand() % plates->count;
+    printf("index is %zu\n", index);
     pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
     Plate *plate_node = plates->head;
     Plate *prev = NULL;
     // pretty slow, but it works for now
-    // TODO: make this faster
+    // TODO: make this faster, can probably just index in with the size of a
+    // plate
     for (size_t i = 0; i < index; i++) {
       prev = plate_node;
       plate_node = plate_node->next;
     }
     // remove the plate from the list
     if (index == 0) {
-
       plates->head = plate_node->next;
     } else {
       prev->next = plate_node->next;
@@ -106,7 +105,6 @@ char *random_available_plate(NumberPlates *plates) {
     // free the deleted plate
     free(plate_node);
   } else {
-    pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
     // generate random licence plate
     for (int j = 0; j < 6; j++) {
       if (j < 3)
@@ -115,6 +113,7 @@ char *random_available_plate(NumberPlates *plates) {
         plate[j] = "0123456789"[(rand() % 10)];
     }
     plate[6] = '\0';
+    pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
   }
   return plate;
 }
@@ -122,7 +121,7 @@ char *random_available_plate(NumberPlates *plates) {
 void wait_at_gate(Boomgate *gate) {
   // wait for exit gate to be raising
   pthread_mutex_lock(&gate->mutex);
-  while (gate->status != 'R' || gate->status != 'O') {
+  while (gate->status != 'R' && gate->status != 'O') {
     pthread_cond_wait(&gate->condition, &gate->mutex);
   }
 
@@ -132,10 +131,12 @@ void wait_at_gate(Boomgate *gate) {
     pthread_mutex_unlock(&gate->mutex);
     return;
   }
+  printf("Gate is being raised\n");
   // gate is 'R' -> wait 10ms for gate to open
   rand_delay_ms(10, 10, &rand_mutex);
   // open the gate
   gate->status = 'O';
+  printf("Opened the gate\n");
   pthread_cond_broadcast(&gate->condition);
   pthread_mutex_unlock(&gate->mutex);
 }
@@ -148,7 +149,7 @@ void send_licence_plate(char *plate, LPR *lpr) {
   }
   // write the car's plate to the level lpr
   memccpy(lpr->plate, plate, 0, 6);
-  // broadcast to any threads waiting on the level lpr and unlock mutex
+  // broadcast to all threads waiting on the level lpr and unlock mutex
   pthread_cond_broadcast(&lpr->condition);
   pthread_mutex_unlock(&lpr->mutex);
 }
@@ -175,11 +176,11 @@ int attempt_entry(ct_data *car_data) {
   if (display > '0' && display < '9') { // level number
     level = display - '0';              // convert to int
     printf("Level is %d\n", level);
+    // wait at gate if given a level
+    wait_at_gate(&entrance->gate);
   } else { // Full or Not allowed Or Evacuating
-    return -1;
+    level = -1;
   }
-  // wait at gate
-  wait_at_gate(&entrance->gate);
   // remove self from queue
   queue_pop(car_data->entry_queue);
   return level;
@@ -197,23 +198,14 @@ void park_car(ct_data *car_data, int level) {
 
 void exit_car(ct_data *car_data, int level) {
   // signal the level lpr
-  pthread_mutex_lock(&car_data->shm->levels[level].lpr.mutex);
-  // wait for level lpr to be free (cleared by manager)
-  while (car_data->shm->levels[level].lpr.plate[0] != '\0') {
-    pthread_cond_wait(&car_data->shm->levels[level].lpr.condition,
-                      &car_data->shm->levels[level].lpr.mutex);
-  }
-  // write the car's plate to the level lpr
-  memccpy(car_data->shm->levels[level].lpr.plate, car_data->plate, 0, 6);
-  // broadcast to any threads waiting on the level lpr and unlock mutex
-  pthread_cond_broadcast(&car_data->shm->levels[level].lpr.condition);
-  pthread_mutex_unlock(&car_data->shm->levels[level].lpr.mutex);
+  send_licence_plate(car_data->plate, &car_data->shm->levels[level].lpr);
   // travel to the exit (10ms)
   rand_delay_ms(10, 10, &rand_mutex);
   // get random exit
   pthread_mutex_lock(&rand_mutex);
   int exit = rand() % NUM_EXITS;
-  pthread_mutex_lock(&rand_mutex);
+  pthread_mutex_unlock(&rand_mutex);
+  printf("Car %.6s attempting to exit at exit %d\n", car_data->plate, exit);
   // trigger exit lpr
   pthread_mutex_lock(&car_data->shm->exits[exit].lpr.mutex);
   // wait for exit lpr to be free (cleared by manager)
@@ -261,6 +253,8 @@ void *car_handler(void *arg) {
   exit_car(data, level);
 
   printf("Car %s is disintegrating\n", data->plate);
+  // add licence plate back in the available pool
+  add_plate(plates, data->plate);
   return NULL;
 }
 
@@ -282,7 +276,8 @@ int main(int argc, char *argv[]) {
   // read allowed plates into a linked list
   // doesn't need to be a hashtable, as we are just grabbing a random plate
   // manager has the hashtable
-  NumberPlates *plates = read_plates("plates.txt");
+  plates = list_from_file("plates.txt");
+  printf("Loaded %zu plates\n", plates->count);
 
   // create queues for each entry
   Queue *entry_queues[NUM_ENTRANCES];
@@ -293,8 +288,10 @@ int main(int argc, char *argv[]) {
   // forever, generate cars
   int num_cars = 0;
   for (;;) {
-    if (MAX_CARS && num_cars > MAX_CARS)
+    if (MAX_CARS && num_cars > MAX_CARS) {    // for debugging
+      rand_delay_ms(1000, 1000, &rand_mutex); // sleep so not using 100% cpu
       continue;
+    }
     char *plate = random_available_plate(plates);
     // create a car thread
     ct_data *data = calloc(1, sizeof(ct_data));

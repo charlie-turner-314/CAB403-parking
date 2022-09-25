@@ -73,7 +73,7 @@ int main(void) {
   // reset color
   printf("\033[0m");
   ht_t *h = NULL;
-  h = htab_init(h, INITIAL_CAPACITY);
+  h = htab_create(h, INITIAL_CAPACITY);
 
   // Run tests
   setlocale(LC_CTYPE, "");

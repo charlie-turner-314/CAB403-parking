@@ -6,11 +6,25 @@ All signficant changes should be noted here to help us keep track of everything 
 
 Anything currently being worked on
 
-- Car simulation -> should pretty much be done, just need the manager I think to test
+- Manager - need to introduce more checks, e.g level capacity not currently factored in
 
-## Added
+## [0.0.3] - 25/9
 
-- Queue structure for entrances
+### Added
+
+- Manager manages cars
+
+### Changed
+
+- Manager now keeps track of level capacity, assigned levels, and current level for each car
+
+## [0.0.2] - 24/9
+
+### Added
+
+- Car simulation
+- Thread-safe random delay function
+- Thread-safe queue structure for entrances
 
 ## [0.0.1] - 23/9
 

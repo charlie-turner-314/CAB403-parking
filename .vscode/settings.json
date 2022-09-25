@@ -1,6 +1,9 @@
 {
     "files.associations": {
-        "__config": "c"
+        "*.java": "java",
+        "__config": "c",
+        "fcntl.h": "c",
+        "unistd.h": "c"
     },
     "C_Cpp.default.includePath": [
         "${workspaceFolder}/**"

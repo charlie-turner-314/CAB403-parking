@@ -4,54 +4,54 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct LPR {
+struct LPR {
   pthread_mutex_t mutex;
   pthread_cond_t condition;
   char plate[6];
   char padding[2];
-} LPR;
+};
 
-typedef struct Boomgate {
+struct Boomgate {
   pthread_mutex_t mutex;
   pthread_cond_t condition;
   char status;
   char padding[7];
-} Boomgate;
+};
 
-typedef struct InfoSign {
+struct InfoSign {
   pthread_mutex_t mutex;
   pthread_cond_t condition;
   char display;
   char padding[7];
-} InfoSign;
+};
 
 // An entrance
-typedef struct Entrance {
-  LPR lpr;
-  Boomgate gate;
-  InfoSign sign;
-} Entrance;
+struct Entrance {
+  struct LPR lpr;
+  struct Boomgate gate;
+  struct InfoSign sign;
+};
 
-typedef struct Exit {
-  LPR lpr;
-  Boomgate gate;
-} Exit;
+struct Exit {
+  struct LPR lpr;
+  struct Boomgate gate;
+};
 
-typedef struct Level {
-  LPR lpr;
+struct Level {
+  struct LPR lpr;
   volatile int16_t temp;
   volatile int8_t alarm;
   char padding[5];
-} Level;
+};
 
-typedef struct SharedMemory {
-  Entrance entrances[NUM_ENTRANCES];
-  Exit exits[NUM_EXITS];
-  Level levels[NUM_LEVELS];
-} SharedMemory;
+struct SharedMemory {
+  struct Entrance entrances[NUM_ENTRANCES];
+  struct Exit exits[NUM_EXITS];
+  struct Level levels[NUM_LEVELS];
+};
 
-SharedMemory *create_shm(char *name);
+struct SharedMemory *create_shm(char *name);
 
-SharedMemory *get_shm(char *name);
+struct SharedMemory *get_shm(char *name);
 
-bool destroy_shm(SharedMemory *shm);
+bool destroy_shm(struct SharedMemory *shm);

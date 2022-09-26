@@ -118,7 +118,7 @@ char *random_available_plate(NumberPlates *plates) {
   return plate;
 }
 
-void wait_at_gate(Boomgate *gate) {
+void wait_at_gate(struct Boomgate *gate) {
   // wait for exit gate to be raising
   pthread_mutex_lock(&gate->mutex);
   while (gate->status != 'R' && gate->status != 'O') {
@@ -141,7 +141,7 @@ void wait_at_gate(Boomgate *gate) {
   pthread_mutex_unlock(&gate->mutex);
 }
 
-void send_licence_plate(char *plate, LPR *lpr) {
+void send_licence_plate(char *plate, struct LPR *lpr) {
   pthread_mutex_lock(&lpr->mutex);
   // wait for level lpr to be free (cleared by manager)
   while (lpr->plate[0] != '\0') {
@@ -161,7 +161,8 @@ int attempt_entry(ct_data *car_data) {
          car_data->entry_queue->id);
   // wait 2ms
   rand_delay_ms(2, 2, &rand_mutex);
-  Entrance *entrance = &car_data->shm->entrances[car_data->entry_queue->id];
+  struct Entrance *entrance =
+      &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
   int level_id;
   // wait on the entrance sign
@@ -275,7 +276,7 @@ int main(int argc, char *argv[]) {
     srand(c);
   }
   // initialise the shared memory
-  SharedMemory *shm = create_shm(SHM_NAME);
+  struct SharedMemory *shm = create_shm(SHM_NAME);
 
   // protect rand with a mutex
   pthread_mutex_init(&rand_mutex, NULL);

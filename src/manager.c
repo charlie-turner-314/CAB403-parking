@@ -49,7 +49,7 @@ ht_t *number_plates_ht;
 pthread_mutex_t capacity_hashtable_mutex;
 ht_t *level_capacity_ht;
 
-SharedMemory *shm;
+struct SharedMemory *shm;
 
 struct EntryArgs {
   int id;
@@ -158,7 +158,7 @@ ht_t *ht_from_file(char *filename) {
 }
 
 // Wait at the LPR for a licence plate to be written
-void wait_for_lpr(LPR *lpr) {
+void wait_for_lpr(struct LPR *lpr) {
   // wait at the given LPR for anything other than NULL to be written
   pthread_mutex_lock(&lpr->mutex);
   while (lpr->plate[0] == 0) { // while the lpr is empty
@@ -171,7 +171,8 @@ void *entry_handler(void *arg) {
   struct EntryArgs *args = (struct EntryArgs *)arg;
   int id = args->id;
   while (true) {
-    Entrance *entrance = &shm->entrances[id]; // The corresponding entrance
+    struct Entrance *entrance =
+        &shm->entrances[id]; // The corresponding entrance
     // wait for a car to arrive at the LPR
     wait_for_lpr(&entrance->lpr);
     // should be a licence plate there now, so read it
@@ -209,6 +210,7 @@ void *entry_handler(void *arg) {
     // TODO: other cases
     if (level != 'X') {
       pthread_mutex_lock(&entrance->gate.mutex);
+      // TODO: close the gate after a delay of 20ms
       entrance->gate.status = 'R';
       pthread_cond_signal(&entrance->gate.condition);
       pthread_mutex_unlock(&entrance->gate.mutex);
@@ -228,7 +230,7 @@ void *level_handler(void *arg) {
   // forever stuck checking for cars
   while (true) {
     // wait at the lpr for a car to arrive
-    Level *level = &shm->levels[level_id];
+    struct Level *level = &shm->levels[level_id];
     wait_for_lpr(&level->lpr);
     // read the plate
     char *plate = level->lpr.plate;
@@ -255,6 +257,7 @@ void *level_handler(void *arg) {
       printf("Car %.6s arrived on level %d but allocated to level %d \n", plate,
              level_id, assigned);
       // they are on the wrong level, re-assign them and let them in
+      // TODO: checking if the level is full
       ts_add_cars_to_level(assigned, -1);
       ts_add_cars_to_level(level_id, 1);
     }
@@ -273,7 +276,7 @@ void *exit_handler(void *arg) {
   struct ExitArgs *args = (struct ExitArgs *)arg;
   int id = args->id;
   while (true) {
-    Exit *exit = &shm->exits[id]; // The corresponding exit
+    struct Exit *exit = &shm->exits[id]; // The corresponding exit
     // wait for a car to arrive at the LPR
     wait_for_lpr(&exit->lpr);
     // should be a licence plate there now, so read it

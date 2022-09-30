@@ -7,7 +7,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-SharedMemory *create_shm(char *name) {
+struct SharedMemory *create_shm(char *name) {
   // remove if exists
   shm_unlink(name);
   // create shared memory segment with shm_open
@@ -19,15 +19,15 @@ SharedMemory *create_shm(char *name) {
     perror("shm_open");
     exit(1);
   }
-  ftruncate(fd, sizeof(SharedMemory));
-  SharedMemory *shm = mmap(NULL, sizeof(SharedMemory), PROT_READ | PROT_WRITE,
-                           MAP_SHARED, fd, 0);
+  ftruncate(fd, sizeof(struct SharedMemory));
+  struct SharedMemory *shm = mmap(NULL, sizeof(struct SharedMemory),
+                                  PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (shm == MAP_FAILED) {
     perror("mmap");
     exit(1);
   }
 
-  printf("Size of shared memory: %ld\n", sizeof(SharedMemory));
+  printf("Size of shared memory: %ld\n", sizeof(struct SharedMemory));
 
   // Track any mutex errors (don't want to track each individually, and if one
   // fails we need to exit anyway)
@@ -82,7 +82,7 @@ SharedMemory *create_shm(char *name) {
   return shm;
 }
 
-SharedMemory *get_shm(char *name) {
+struct SharedMemory *get_shm(char *name) {
   // open the shared memory segment with shm_open
   // map the memory to the size of a SharedMemory struct
   // return the pointer to the shared memory
@@ -91,8 +91,8 @@ SharedMemory *get_shm(char *name) {
     perror("shm_open");
     exit(1);
   }
-  SharedMemory *shm = mmap(NULL, sizeof(SharedMemory), PROT_READ | PROT_WRITE,
-                           MAP_SHARED, fd, 0);
+  struct SharedMemory *shm = mmap(NULL, sizeof(struct SharedMemory),
+                                  PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (shm == MAP_FAILED) {
     perror("mmap");
     exit(1);
@@ -100,14 +100,38 @@ SharedMemory *get_shm(char *name) {
   return shm;
 }
 
-bool destroy_shm(SharedMemory *shm) {
+bool destroy_shm(struct SharedMemory *shm) {
+  // destroy all the mutexes and condition variables
+  for (int entrance = 0; entrance < NUM_ENTRANCES; entrance++) {
+    pthread_mutex_destroy(&shm->entrances[entrance].lpr.mutex);
+    pthread_mutex_destroy(&shm->entrances[entrance].gate.mutex);
+    pthread_mutex_destroy(&shm->entrances[entrance].sign.mutex);
+    pthread_cond_destroy(&shm->entrances[entrance].lpr.condition);
+    pthread_cond_destroy(&shm->entrances[entrance].gate.condition);
+    pthread_cond_destroy(&shm->entrances[entrance].sign.condition);
+  }
+  for (int exit = 0; exit < NUM_EXITS; exit++) {
+    pthread_mutex_destroy(&shm->exits[exit].lpr.mutex);
+    pthread_mutex_destroy(&shm->exits[exit].gate.mutex);
+    pthread_cond_destroy(&shm->exits[exit].lpr.condition);
+    pthread_cond_destroy(&shm->exits[exit].gate.condition);
+  }
+  for (int level = 0; level < NUM_LEVELS; level++) {
+    pthread_mutex_destroy(&shm->levels[level].lpr.mutex);
+    pthread_cond_destroy(&shm->levels[level].lpr.condition);
+  }
+
   // unmap the shared memory (for completeness - will be done automatically on
   // exit)
   // close the shared memory return 0
-  if (munmap(shm, sizeof(SharedMemory)) == -1) {
+  if (munmap(shm, sizeof(struct SharedMemory)) == -1) {
     perror("munmap");
     return (1);
   }
-  shm_unlink(SHM_NAME);
+  int unlink = shm_unlink(SHM_NAME);
+  if (unlink == -1) {
+    perror("shm_unlink");
+    return (0);
+  }
   return 1;
 }

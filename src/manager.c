@@ -1,6 +1,7 @@
 #include "config.h"
 #include "hashtable.h"
 #include "shm_parking.h"
+#include "display.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,7 +198,7 @@ void *entry_handler(void *arg) {
       level = INT_TO_CHAR(level + 1); // level offset by 1 for display
 
     } else { // not allowed
-      printf("Plate %.6s told to piss off\n", plate);
+      printf("Plate %.6s told to leave\n", plate);
       level = 'X';
     }
     // set the sign
@@ -356,6 +357,11 @@ int main(void) {
     pthread_create(&thread, NULL, exit_handler, args);
     exit_threads[i] = &thread;
   }
+
+  #ifdef SHOW_DISPLAY
+  pthread_t display_thread;
+  pthread_create(&display_thread, NULL, display_handler, NULL);
+  #endif
 
   // wait for threads to finish and clean up their resources
   for (int i = 0; i < NUM_ENTRANCES; i++) {

@@ -1,18 +1,23 @@
 CC = gcc
-CFLAGS = -Wall -pedantic -I../libs -I../src # Show all reasonable warnings
+CFLAGS = -Wall -pedantic -Wextra -Werror -I../libs -I../src # Show all reasonable warnings
 LDFLAGS = -lrt -lm -lpthread
-HEADERS = ../libs/delay.h ../libs/hashtable.h ../libs/queue.h ../libs/shm_parking.h simulator.h config.h
+HEADERS = ../libs/delay.h ../libs/hashtable.h ../libs/queue.h ../libs/shm_parking.h display.h simulator.h config.h
 
-all: manager simulator
+all: manager simulator terminal
 
-manager: manager.o ../libs/delay.o ../libs/hashtable.o ../libs/queue.o ../libs/shm_parking.o
+manager: manager.o display.o ../libs/delay.o ../libs/hashtable.o ../libs/queue.o ../libs/shm_parking.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
 simulator: simulator.o ../libs/delay.o ../libs/hashtable.o ../libs/queue.o ../libs/shm_parking.o
 	$(CC) $(LDFLAGS) -o $@ $^
 
+terminal: terminal.o display.o ../libs/shm_parking.o
+	$(CC) $(LDFLAGS) -o $@ $^
+
 # dependencies for each file
 manager.o: manager.c $(HEADERS)
+display.o: display.c $(HEADERS)
+terminal.o: terminal.c  $(HEADERS)
 simulator.o: simulator.c $(HEADERS)
 ../libs/delay.o: ../libs/delay.c $(HEADERS)
 ../libs/hashtable.o: ../libs/hashtable.c $(HEADERS)

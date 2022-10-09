@@ -379,7 +379,7 @@ int main(int argc, char *argv[]) {
 
   pthread_t car_threads[CAR_THREADS];
   for (int i = 0; i < CAR_THREADS; i++) {
-    pthread_t thread = NULL;
+    pthread_t thread;
     // create a car thread
     pthread_create(&thread, NULL, car_handler, car_queue);
     car_threads[i] = thread;

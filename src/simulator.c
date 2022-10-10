@@ -80,47 +80,50 @@ NumberPlates *list_from_file(char *FILENAME) {
 // generate a car with a random number plate
 // 50% of the time will be within the hashtable
 char *random_available_plate(NumberPlates *plates) {
-  pthread_mutex_lock(&rand_mutex);
-  int allowed = rand() % 2;
-  char *plate = calloc(7, sizeof(char));
-  if (!plates->count)
-    allowed = 0;
-  if (allowed) {
-    size_t index = rand() % plates->count;
-    pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
-    Plate *plate_node = plates->head;
-    Plate *prev = NULL;
-    // pretty slow, but it works for now
-    // TODO: make this faster, can probably just index in with the size of a
-    // plate
-    for (size_t i = 0; i < index; i++) {
-      prev = plate_node;
-      plate_node = plate_node->next;
-    }
-    // remove the plate from the list
-    if (index == 0) {
-      plates->head = plate_node->next;
-    } else {
-      prev->next = plate_node->next;
-    }
+    char *plate = NULL;
+    //pthread_mutex_lock(&rand_mutex);
+    int allowed = rand() % 2;
+    if (!plates->count)
+        allowed = 0;
+    if (allowed) {
+        plate = calloc(7, sizeof(char));
+        size_t index = rand() % plates->count;
+        pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
+        Plate *plate_node = plates->head;
+        Plate *prev = NULL;
+        // pretty slow, but it works for now
+        // TODO: make this faster, can probably just index in with the size of a
+        // plate
+        for (size_t i = 0; i < index; i++) {
+            prev = plate_node;
+            plate_node = plate_node->next;
+        }
+        //remove the plate from the list
+        if (index == 0) {
+            plates->head = plate_node->next;
+        } else {
+            prev->next = plate_node->next;
+        }
 
-    plates->count -= 1;
+        plates->count -= 1;
 
-    // set the plate
-    memccpy(plate, plate_node->plate, 0, 7);
-    // free the deleted plate
-    free(plate_node);
-  } else {
-    // generate random licence plate
-    for (int j = 0; j < 6; j++) {
-      if (j < 3)
-        plate[j] = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rand() % 26]);
-      else
-        plate[j] = "0123456789"[(rand() % 10)];
-    }
-    plate[6] = '\0';
-    pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
-  }
+        // set the plate
+        memccpy(plate, plate_node->plate, 0, 7);
+        // free the deleted plate
+        free(plate_node);
+    } 
+    // Removed random generator for now
+    //     else {
+    //     // generate random licence plate
+    //     for (int j = 0; j < 6; j++) {
+    //       if (j < 3)
+    //         plate[j] = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rand() % 26]);
+    //       else
+    //         plate[j] = "0123456789"[(rand() % 10)];
+    //     }
+    //     plate[6] = '\0';
+    //     pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
+    //   }
   return plate;
 }
 
@@ -245,6 +248,7 @@ void *car_handler(void *arg) {
     ct_data *data = (ct_data *)car_item->value;
     // add self to entrance queue (size 7 as 6 characters on the plate + null)
     queue_push(data->entry_queue, data->plate, 7);
+    printf("push to q %6s\n", data->plate);
     // wait until front of queue
     // while not at front of queue
     pthread_mutex_lock(&data->entry_queue->mutex);
@@ -372,8 +376,8 @@ int main(int argc, char *argv[]) {
   pthread_create(&input_thread, NULL, input_handler, &input);
 
   // TODO:handle the (limited) display for the simulator
-  pthread_t display_thread;
-  pthread_create(&display_thread, NULL, display_handler, entry_queues);
+  //pthread_t display_thread;
+  //pthread_create(&display_thread, NULL, display_handler, entry_queues);
 
   Queue *car_queue = queue_create(0);
 
@@ -387,23 +391,34 @@ int main(int argc, char *argv[]) {
 
   while (run) {
     char *plate = random_available_plate(plates);
-    // create a car thread
-    ct_data *data = calloc(1, sizeof(ct_data));
-    memccpy(data->plate, plate, 0, 7);
-    free(plate);
+    if (plate) {
+        // create a car thread
+        ct_data *data = calloc(1, sizeof(ct_data));
+        memccpy(data->plate, plate, 0, 7);
+        free(plate);
 
-    pthread_mutex_lock(&rand_mutex);
-    data->entry_queue = entry_queues[rand() % NUM_LEVELS];
-    pthread_mutex_unlock(&rand_mutex);
+        pthread_mutex_lock(&rand_mutex);
+        data->entry_queue = entry_queues[rand() % NUM_LEVELS];
+        pthread_mutex_unlock(&rand_mutex);
 
-    data->rand_mutex = &rand_mutex;
-    data->shm = shm;
-    // add the car to the queue
-    queue_push(car_queue, data, sizeof(ct_data));
-    // free our copy of the car, queue_push makes a copy
-    free(data);
+        data->rand_mutex = &rand_mutex;
+        data->shm = shm;
+        // add the car to the queue
+        queue_push(car_queue, data, sizeof(ct_data));
+        // free our copy of the car, queue_push makes a copy
+        free(data);
+    } 
     // wait between 1 and 100 ms
     rand_delay_ms(1, 100, &rand_mutex);
+
+    for (int i = 0; i < NUM_ENTRANCES; i++) {
+        printf("EntryQ: %d : ", i);
+        entry_queue_print(entry_queues[i]);
+        printf("\n");
+    }
+    printf("CarQ: ");
+    car_queue_print(car_queue);
+    printf("\n");
   }
 
   // join the threads
@@ -422,7 +437,7 @@ int main(int argc, char *argv[]) {
   printf("Threads in use after joining: %d\n", used_threads);
 
   pthread_join(input_thread, NULL);
-  pthread_join(display_thread, NULL);
+  //pthread_join(display_thread, NULL);
 
   // destroy the plates
   Plate *plate = plates->head;

@@ -15,7 +15,7 @@ typedef struct car_thread_data {
 
 // attempt entry -> trigger the LPR and wait for entrance thread to open the
 // gate, return the level to park on, or -1 if the car is rejected
-int attempt_entry(ct_data *cat_data);
+int attempt_entry(ct_data *car_data);
 
 // park the car in the level given by the entrance -> triggering the level LPR
 void park_car(ct_data *car_data, int level);

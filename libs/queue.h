@@ -31,3 +31,7 @@ void queue_pop(Queue *q);
 QItem *queue_pop_unsafe(Queue *q);
 
 bool destroy_queue(Queue *q);
+
+void entry_queue_print(Queue *q);
+
+void car_queue_print(Queue *q);

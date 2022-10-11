@@ -7,7 +7,7 @@
 struct LPR {
   pthread_mutex_t mutex;
   pthread_cond_t condition;
-  char plate[6];
+  char plate[6]; // include 6 chars as per spec (no null-terminator)
   char padding[2];
 };
 

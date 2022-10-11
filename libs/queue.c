@@ -1,15 +1,17 @@
 // A thread-safe queue implementation.
 #include "queue.h"
+#include "simulator.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// Create a new queue.
 Queue *queue_create(int id) {
   Queue *q = malloc(sizeof(Queue));
   q->id = id;
   q->head = NULL;
   q->tail = NULL;
+  q->length = 0;
   int mutex = pthread_mutex_init(&q->mutex, NULL);
   if (mutex) {
     perror("Error creating mutex");
@@ -24,15 +26,12 @@ Queue *queue_create(int id) {
 }
 
 QItem *queue_peek(Queue *q) {
-  // NOTE: removed the mutex lock but keep in mind for later if something breaks
-  // pthread_mutex_lock(&q->mutex);
   QItem *item = q->head;
-  // pthread_mutex_unlock(&q->mutex);
   return item;
 }
 
 // Push an item to the back of the queue.
-bool queue_push(Queue *q, char *value) {
+bool queue_push(Queue *q, void *value, size_t size) {
   if (q == NULL) {
     return false;
   }
@@ -42,10 +41,10 @@ bool queue_push(Queue *q, char *value) {
   if (new_item == NULL) {
     return false;
   }
-  // allocate memory for the value and a null terminator
-  new_item->value = calloc(sizeof(char), (strlen(value) + 1));
-  // copy the value into the new item, ensuring null termination
-  strncpy(new_item->value, value, strlen(value) + 1);
+  // allocate memory for the value
+  new_item->value = calloc(1, size);
+  // copy the value into the new item
+  memcpy(new_item->value, value, size);
   // end of queue so no next
   new_item->next = NULL;
 
@@ -59,20 +58,17 @@ bool queue_push(Queue *q, char *value) {
   // signal the condition variable
   pthread_cond_signal(&q->condition);
   pthread_mutex_unlock(&q->mutex);
+  q->length++;
   return true;
 }
 
 // Pop an item from the front of the queue.
-QItem *queue_pop(Queue *q) {
-  if (q == NULL) {
-    return NULL;
+void queue_pop(Queue *q) {
+  if (!q || !q->head) {
+    return;
   }
   // ensure only one thread can access the queue at a time
   pthread_mutex_lock(&q->mutex);
-  // wait until the queue has an item
-  while (q->head == NULL) {
-    pthread_cond_wait(&q->condition, &q->mutex);
-  }
   QItem *item = q->head;
   q->head = q->head->next;
   // if the queue is now empty, set the tail to NULL
@@ -84,10 +80,24 @@ QItem *queue_pop(Queue *q) {
   pthread_mutex_unlock(&q->mutex);
   free(item->value);
   free(item);
+  q->length--;
+  return;
+}
+
+QItem *unsafe_queue_pop_return(Queue *q) {
+  if (!q || !q->head) {
+    return NULL;
+  }
+  QItem *item = q->head;
+  q->head = q->head->next;
+  // if the queue is now empty, set the tail to NULL
+  if (q->head == NULL) {
+    q->tail = NULL;
+  }
+  q->length--;
   return item;
 }
 
-// Destroy a queue.
 bool destroy_queue(Queue *q) {
   if (q == NULL) {
     return false;
@@ -95,10 +105,12 @@ bool destroy_queue(Queue *q) {
   while (q->head != NULL) {
     QItem *temp = q->head;
     q->head = q->head->next;
+    q->length--;
     free(temp->value);
     free(temp);
   }
   int mutex_destroy = pthread_mutex_destroy(&q->mutex);
+  printf("queue %d mutex destroy result: %d\n", q->id, mutex_destroy);
   if (mutex_destroy) {
     perror("Error destroying mutex");
     exit(EXIT_FAILURE);
@@ -108,5 +120,46 @@ bool destroy_queue(Queue *q) {
     perror("Error destroying condition");
     exit(EXIT_FAILURE);
   }
+  free(q);
   return 1;
+}
+
+// print entrance item
+static void entrance_item_print(char *plate) { printf("'%6s' ", plate); }
+
+// print entrance queue
+void entry_queue_print(Queue *q) {
+
+  pthread_mutex_lock(&q->mutex);
+  QItem *node = q->head;
+
+  if (!node)
+    printf("empty");
+
+  while (node) {
+    entrance_item_print(node->value);
+    node = node->next;
+  }
+  pthread_mutex_unlock(&q->mutex);
+}
+
+// print car item
+static void car_item_print(ct_data *car_data) {
+  printf("'%6s' ", car_data->plate);
+}
+
+// print car object queue
+void car_queue_print(Queue *q) {
+
+  pthread_mutex_lock(&q->mutex);
+  QItem *node = q->head;
+
+  if (!node)
+    printf("empty");
+
+  while (node) {
+    car_item_print(node->value);
+    node = node->next;
+  }
+  pthread_mutex_unlock(&q->mutex);
 }

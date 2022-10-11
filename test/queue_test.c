@@ -3,14 +3,14 @@
 
 bool push_item(Queue *q) {
   // push one item
-  if (!queue_push(q, "test"))
+  if (!queue_push(q, "test", 5))
     return false;
   return true;
 }
 
 bool push_item2(Queue *q) {
   // push one item
-  if (!queue_push(q, "test2"))
+  if (!queue_push(q, "test2", 6))
     return false;
   return true;
 }
@@ -27,21 +27,23 @@ bool peek_item(Queue *q) {
 
 bool pop_item(Queue *q) {
   // pop the item at front of queue
-  QItem *item = queue_pop(q);
+  QItem *item = queue_peek(q);
   if (item == NULL)
     return false;
   if (strcmp(item->value, "test") != 0)
     return false;
+  queue_pop(q);
   return true;
 }
 
 bool pop_item2(Queue *q) {
   // pop the item at front of queue
-  QItem *item = queue_pop(q);
+  QItem *item = queue_peek(q);
   if (item == NULL)
     return false;
   if (strcmp(item->value, "test2") != 0)
     return false;
+  queue_pop(q);
   return true;
 }
 

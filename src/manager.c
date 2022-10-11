@@ -1,4 +1,5 @@
 #include "config.h"
+#include "display.h"
 #include "hashtable.h"
 #include "shm_parking.h"
 #include <stdio.h>
@@ -42,8 +43,8 @@ to get current  -> stored_int & 0x0F (0x0F is 00001111 in binary)
 pthread_mutex_t rand_mutex;
 // mutex for accessing the hashtable of vehicles, hashtable should be fast
 // enough to not be a performance problem
-pthread_mutex_t plate_hashtable_mutex;
-ht_t *number_plates_ht;
+pthread_mutex_t plates_mutex;
+ht_t *plates_ht;
 
 // hashtable for storing capacity of each level
 pthread_mutex_t capacity_hashtable_mutex;
@@ -97,9 +98,9 @@ int ts_get_number_plate(char *plate) {
   strncpy(null_terminated_plate, plate, 7);
   null_terminated_plate[6] = '\0';
   // ----------
-  pthread_mutex_lock(&plate_hashtable_mutex);
-  value = htab_get(number_plates_ht, null_terminated_plate);
-  pthread_mutex_unlock(&plate_hashtable_mutex);
+  pthread_mutex_lock(&plates_mutex);
+  value = htab_get(plates_ht, null_terminated_plate);
+  pthread_mutex_unlock(&plates_mutex);
   return value;
 }
 
@@ -111,11 +112,11 @@ bool ts_set_assigned_level(char *plate, int level) {
   null_terminated_plate[6] = '\0';
   // ----------
   bool success;
-  pthread_mutex_lock(&plate_hashtable_mutex);
-  int current_value = htab_get(number_plates_ht, null_terminated_plate);
+  pthread_mutex_lock(&plates_mutex);
+  int current_value = htab_get(plates_ht, null_terminated_plate);
   int new_value = SET_ASSIGNED_LEVEL(current_value, level);
-  success = htab_set(number_plates_ht, null_terminated_plate, new_value);
-  pthread_mutex_unlock(&plate_hashtable_mutex);
+  success = htab_set(plates_ht, null_terminated_plate, new_value);
+  pthread_mutex_unlock(&plates_mutex);
   return success;
 }
 
@@ -127,11 +128,11 @@ bool ts_set_current_level(char *plate, int level) {
   null_terminated_plate[6] = '\0';
   // ----------
   bool success;
-  pthread_mutex_lock(&plate_hashtable_mutex);
-  int current_value = htab_get(number_plates_ht, null_terminated_plate);
+  pthread_mutex_lock(&plates_mutex);
+  int current_value = htab_get(plates_ht, null_terminated_plate);
   int new_value = SET_CURRENT_LEVEL(current_value, level);
-  success = htab_set(number_plates_ht, null_terminated_plate, new_value);
-  pthread_mutex_unlock(&plate_hashtable_mutex);
+  success = htab_set(plates_ht, null_terminated_plate, new_value);
+  pthread_mutex_unlock(&plates_mutex);
   return success;
 }
 
@@ -177,7 +178,6 @@ void *entry_handler(void *arg) {
     wait_for_lpr(&entrance->lpr);
     // should be a licence plate there now, so read it
     char *plate = entrance->lpr.plate;
-    printf("Plate %.6s arrived at entrance %d\n", plate, id);
     // check if the car is in the hashtable (and not already in the car park)
     int value = ts_get_number_plate(plate);
     char level;
@@ -191,13 +191,10 @@ void *entry_handler(void *arg) {
       ts_add_cars_to_level(level, 1);
       // assign the car to the level
       ts_set_assigned_level(plate, level);
-      printf("Car %.6s allowed in, assigned to level %d capacity\n", plate,
-             GET_ASSIGNED_LEVEL(ts_get_number_plate(plate)));
       // set the level to the character representation
       level = INT_TO_CHAR(level + 1); // level offset by 1 for display
 
     } else { // not allowed
-      printf("Plate %.6s told to piss off\n", plate);
       level = 'X';
     }
     // set the sign
@@ -234,7 +231,6 @@ void *level_handler(void *arg) {
     wait_for_lpr(&level->lpr);
     // read the plate
     char *plate = level->lpr.plate;
-    printf("Plate %.6s arrived at level %d\n", plate, level_id);
     // check if they are entering or exiting
     int value = ts_get_number_plate(plate);
     int assigned = GET_ASSIGNED_LEVEL(value);
@@ -247,15 +243,12 @@ void *level_handler(void *arg) {
         ts_add_cars_to_level(level_id, -1);
         // car from the level
         ts_set_current_level(plate, 0);
-        printf("Car %.6s leaving level %d\n", plate, level_id);
       } else {
         // something went real wrong
         perror("Car teleported to different level\n");
         exit(EXIT_FAILURE);
       }
     } else if (assigned != level_id) {
-      printf("Car %.6s arrived on level %d but allocated to level %d \n", plate,
-             level_id, assigned);
       // they are on the wrong level, re-assign them and let them in
       // TODO: checking if the level is full
       ts_add_cars_to_level(assigned, -1);
@@ -281,7 +274,6 @@ void *exit_handler(void *arg) {
     wait_for_lpr(&exit->lpr);
     // should be a licence plate there now, so read it
     char *plate = exit->lpr.plate;
-    printf("Plate %.6s arrived at exit %d\n", plate, id);
 
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
@@ -293,20 +285,24 @@ void *exit_handler(void *arg) {
     memset(exit->lpr.plate, '\0', 6);
     pthread_cond_signal(&exit->lpr.condition);
     pthread_mutex_unlock(&exit->lpr.mutex);
+
+    // car left, unassign them from the carpark
+    ts_set_assigned_level(plate, 0);
+    ts_set_current_level(plate, 0);
   }
 }
 
 int main(void) {
   // initialise local mutexes
   pthread_mutex_init(&rand_mutex, NULL);
-  pthread_mutex_init(&plate_hashtable_mutex, NULL);
+  pthread_mutex_init(&plates_mutex, NULL);
   pthread_mutex_init(&capacity_hashtable_mutex, NULL);
 
   // get the shared memory object
   shm = get_shm(SHM_NAME);
 
   // read the allowed number plates from a file into hashtable
-  number_plates_ht = ht_from_file("plates.txt");
+  plates_ht = ht_from_file("plates.txt");
 
   // initialise level capacity hashtable
   level_capacity_ht = htab_create(level_capacity_ht, NUM_LEVELS);
@@ -357,6 +353,12 @@ int main(void) {
     exit_threads[i] = &thread;
   }
 
+  ManDisplayData display_data;
+  display_data.ht = level_capacity_ht;
+  display_data.shm = shm;
+  pthread_t display_thread;
+  pthread_create(&display_thread, NULL, man_display_handler, &display_data);
+
   // wait for threads to finish and clean up their resources
   for (int i = 0; i < NUM_ENTRANCES; i++) {
     pthread_join(*entry_threads[i], NULL);
@@ -371,22 +373,4 @@ int main(void) {
     pthread_join(*exit_threads[i], NULL);
     free(exit_args[i]);
   }
-
-  // set the entrance 4 entry sign to '4'
-  // printf("Plate is: %.6s\n", shm->entrances[1].lpr.plate);
-  // // set the plate to NULL characters
-  // pthread_mutex_lock(&shm->entrances[1].lpr.mutex);
-  // memset(shm->entrances[1].lpr.plate, '\0', 6);
-  // pthread_cond_signal(&shm->entrances[1].lpr.condition);
-  // pthread_mutex_unlock(&shm->entrances[1].lpr.mutex);
-
-  // InfoSign *sign = &shm->entrances[1].sign;
-  // pthread_mutex_lock(&sign->mutex);
-  // sign->display = '4';
-  // pthread_cond_signal(&sign->condition);
-  // pthread_mutex_unlock(&sign->mutex);
-  // destroy_shm(shm);
-
-  // - Threads for each entry/exit/level
-  // - Thread for display
 }

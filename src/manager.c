@@ -1,7 +1,7 @@
 #include "config.h"
+#include "display.h"
 #include "hashtable.h"
 #include "shm_parking.h"
-#include "display.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -178,7 +178,6 @@ void *entry_handler(void *arg) {
     wait_for_lpr(&entrance->lpr);
     // should be a licence plate there now, so read it
     char *plate = entrance->lpr.plate;
-    printf("Plate %.6s arrived at entrance %d\n", plate, id);
     // check if the car is in the hashtable (and not already in the car park)
     int value = ts_get_number_plate(plate);
     char level;
@@ -192,13 +191,10 @@ void *entry_handler(void *arg) {
       ts_add_cars_to_level(level, 1);
       // assign the car to the level
       ts_set_assigned_level(plate, level);
-      printf("Car %.6s allowed in, assigned to level %d capacity\n", plate,
-             GET_ASSIGNED_LEVEL(ts_get_number_plate(plate)));
       // set the level to the character representation
       level = INT_TO_CHAR(level + 1); // level offset by 1 for display
 
     } else { // not allowed
-      printf("Plate %.6s told to leave\n", plate);
       level = 'X';
     }
     // set the sign
@@ -235,7 +231,6 @@ void *level_handler(void *arg) {
     wait_for_lpr(&level->lpr);
     // read the plate
     char *plate = level->lpr.plate;
-    printf("Plate %.6s arrived at level %d\n", plate, level_id);
     // check if they are entering or exiting
     int value = ts_get_number_plate(plate);
     int assigned = GET_ASSIGNED_LEVEL(value);
@@ -248,15 +243,12 @@ void *level_handler(void *arg) {
         ts_add_cars_to_level(level_id, -1);
         // car from the level
         ts_set_current_level(plate, 0);
-        printf("Car %.6s leaving level %d\n", plate, level_id);
       } else {
         // something went real wrong
         perror("Car teleported to different level\n");
         exit(EXIT_FAILURE);
       }
     } else if (assigned != level_id) {
-      printf("Car %.6s arrived on level %d but allocated to level %d \n", plate,
-             level_id, assigned);
       // they are on the wrong level, re-assign them and let them in
       // TODO: checking if the level is full
       ts_add_cars_to_level(assigned, -1);
@@ -282,7 +274,6 @@ void *exit_handler(void *arg) {
     wait_for_lpr(&exit->lpr);
     // should be a licence plate there now, so read it
     char *plate = exit->lpr.plate;
-    printf("Plate %.6s arrived at exit %d\n", plate, id);
 
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
@@ -294,6 +285,10 @@ void *exit_handler(void *arg) {
     memset(exit->lpr.plate, '\0', 6);
     pthread_cond_signal(&exit->lpr.condition);
     pthread_mutex_unlock(&exit->lpr.mutex);
+
+    // car left, unassign them from the carpark
+    ts_set_assigned_level(plate, 0);
+    ts_set_current_level(plate, 0);
   }
 }
 
@@ -358,10 +353,8 @@ int main(void) {
     exit_threads[i] = &thread;
   }
 
-  #ifdef SHOW_DISPLAY
   pthread_t display_thread;
   pthread_create(&display_thread, NULL, display_handler, NULL);
-  #endif
 
   // wait for threads to finish and clean up their resources
   for (int i = 0; i < NUM_ENTRANCES; i++) {

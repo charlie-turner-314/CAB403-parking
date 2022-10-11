@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // Assumption
 // - Maximum 9 levels -> as each display is only 1 char
@@ -77,6 +78,10 @@ struct LevelArgs {
 // thread-safe access to capacity of a level
 int ts_cars_on_level(int l) {
   char *level = malloc(2);
+  if (!level) {
+    perror("malloc capacity");
+    exit(1);
+  }
   level[0] = INT_TO_CHAR(l);
   level[1] = '\0';
   int cars;
@@ -89,8 +94,7 @@ int ts_cars_on_level(int l) {
 // Get Levels that have not reached capacity
 // Returns int array with first element being the number of available levels
 // and the rest being the actual levels
-int *get_available_levels() {
-  int *levels = calloc(NUM_LEVELS + 1, sizeof(int));
+int *get_available_levels(int *levels) {
   if (levels == NULL) {
     perror("Level Malloc");
     exit(EXIT_FAILURE);
@@ -193,7 +197,7 @@ ht_t *ht_from_file(char *filename) {
 void wait_for_lpr(struct LPR *lpr) {
   // wait at the given LPR for anything other than NULL to be written
   pthread_mutex_lock(&lpr->mutex);
-  while (lpr->plate[0] == 0) { // while the lpr is empty
+  while (lpr->plate[0] == '\0') { // while the lpr is empty
     pthread_cond_wait(&lpr->condition, &lpr->mutex);
   }
   pthread_mutex_unlock(&lpr->mutex);
@@ -211,18 +215,23 @@ void *entry_handler(void *arg) {
     // check if the car is in the hashtable (and not already in the car park)
     int value = ts_get_number_plate(plate);
     char level;
-    // TODO: other cases e.g full, think about number of cars on each level
+    // TODO: fire alarm stuff
     if (GET_ASSIGNED_LEVEL(value) == NO_LEVEL &&
         GET_CURRENT_LEVEL(value) == NO_LEVEL) { // not already in but allowed
       // set info sign to a random available level
-      int *levels = get_available_levels();
+      int *levels = calloc(NUM_LEVELS + 1, sizeof(int));
+      if (levels == NULL) {
+        perror("Levels Calloc");
+        exit(EXIT_FAILURE);
+      }
+      levels = get_available_levels(levels);
       if (levels[0] == 0) {
-        level = 'F';
+        level = 'F'; // Carpark Full
       } else {
         pthread_mutex_lock(&rand_mutex);
-        int levelID = rand() % levels[0]; // level index
+        int levelID = rand() % levels[0]; // random available level index
         pthread_mutex_unlock(&rand_mutex);
-        level = levels[levelID];
+        level = levels[levelID]; // random available level (integer)
         // increment the level capacity
         ts_add_cars_to_level(level, 1);
         // assign the car to the level
@@ -230,22 +239,32 @@ void *entry_handler(void *arg) {
         // set the level to the character representation
         level = INT_TO_CHAR(level + 1); // level offset by 1 for display
       }
-      free(levels);
-    } else { // not allowed
+      free(levels); // get rid of the levels array
+    } else { // not allowed in the car park (already in or not in the hashtable)
       level = 'X';
     }
+
     // set the sign
     pthread_mutex_lock(&entrance->sign.mutex);
     entrance->sign.display = level;
     pthread_cond_broadcast(&entrance->sign.condition);
     pthread_mutex_unlock(&entrance->sign.mutex);
 
-    // open the gate if the car is allowed
+    // Tell the simulator to open the gate
     // TODO: other cases
     if (level != 'X') {
       pthread_mutex_lock(&entrance->gate.mutex);
-      // TODO: close the gate after a delay of 20ms
-      entrance->gate.status = 'R';
+      // raise the gate if it is not already open
+      if (entrance->gate.status != 'O') {
+        entrance->gate.status = 'R';
+      }
+      pthread_cond_broadcast(&entrance->gate.condition);
+      pthread_mutex_unlock(&entrance->gate.mutex);
+
+      // wait 20ms and then tell sim to close the gate
+      rand_delay_ms(20, 20, &rand_mutex);
+      pthread_mutex_lock(&entrance->gate.mutex);
+      entrance->gate.status = 'L';
       pthread_cond_broadcast(&entrance->gate.condition);
       pthread_mutex_unlock(&entrance->gate.mutex);
     }
@@ -253,8 +272,10 @@ void *entry_handler(void *arg) {
     // clear the LPR
     pthread_mutex_lock(&entrance->lpr.mutex);
     memset(entrance->lpr.plate, '\0', 6);
+    pthread_cond_broadcast(&entrance->lpr.condition);
     pthread_mutex_unlock(&entrance->lpr.mutex);
   }
+  printf("Entry Stop %d\n", id);
   return NULL;
 }
 
@@ -323,17 +344,18 @@ void *exit_handler(void *arg) {
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
     exit->gate.status = 'R';
+    // car left, unassign them from the carpark. Has to be in critical section
+    // to prevent sim reusing plate instantly and then manager thinking they are
+    // still in the carpark
+    ts_set_assigned_level(plate, NO_LEVEL);
+    ts_set_current_level(plate, NO_LEVEL);
     pthread_cond_broadcast(&exit->gate.condition);
     pthread_mutex_unlock(&exit->gate.mutex);
-    // clear the LPR
+    // clear the LPR, ready for another car
     pthread_mutex_lock(&exit->lpr.mutex);
     memset(exit->lpr.plate, '\0', 6);
     pthread_cond_broadcast(&exit->lpr.condition);
     pthread_mutex_unlock(&exit->lpr.mutex);
-
-    // car left, unassign them from the carpark
-    ts_set_assigned_level(plate, NO_LEVEL);
-    ts_set_current_level(plate, NO_LEVEL);
   }
 }
 
@@ -363,6 +385,10 @@ int main(int argc, char *argv[]) {
   struct EntryArgs *entry_args[NUM_ENTRANCES];
   for (int i = 0; i < NUM_ENTRANCES; i++) {
     struct EntryArgs *args = calloc(1, sizeof(struct EntryArgs));
+    if (args == NULL) {
+      perror("calloc entry");
+      exit(EXIT_FAILURE);
+    }
     entry_args[i] = args;
     args->id = i;
     pthread_t thread;
@@ -376,6 +402,10 @@ int main(int argc, char *argv[]) {
   struct LevelArgs *level_args[NUM_LEVELS];
   for (int i = 0; i < NUM_ENTRANCES; i++) {
     struct LevelArgs *args = calloc(1, sizeof(struct LevelArgs));
+    if (args == NULL) {
+      perror("calloc level");
+      exit(EXIT_FAILURE);
+    }
     level_args[i] = args;
     args->id = i;
     pthread_t thread;
@@ -389,6 +419,10 @@ int main(int argc, char *argv[]) {
   struct ExitArgs *exit_args[NUM_EXITS];
   for (int i = 0; i < NUM_EXITS; i++) {
     struct ExitArgs *args = calloc(1, sizeof(struct ExitArgs));
+    if (args == NULL) {
+      perror("calloc exit");
+      exit(EXIT_FAILURE);
+    }
     exit_args[i] = args;
     args->id = i;
     pthread_t thread;
@@ -398,7 +432,6 @@ int main(int argc, char *argv[]) {
   }
 
   // don't run the display if we don't want it
-  printf("Argc: %d\n", argc);
   if (argc < 2 || strcmp(argv[1], "nodisp") != 0) {
     ManDisplayData display_data;
     display_data.ht = capacity_ht;

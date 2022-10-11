@@ -49,15 +49,22 @@ void *man_display_handler(void *arg) {
       printf("%d\n", i + 1);
       printf("\x1B[0m");
       ANSI_CTRL_POS(hrow + 1, col);
+
       pthread_mutex_lock(&shm->entrances[i].lpr.mutex);
       char *plate = shm->entrances[i].lpr.plate;
       printf("%.6s|\n", plate[0] ? plate : "      ");
       pthread_mutex_unlock(&shm->entrances[i].lpr.mutex);
+
       ANSI_CTRL_POS(hrow + 2, col);
+      pthread_mutex_lock(&shm->entrances[i].gate.mutex);
       char status = shm->entrances[i].gate.status;
+      pthread_mutex_unlock(&shm->entrances[i].gate.mutex);
       printf("  %c   |\n", status ? status : ' ');
+
       ANSI_CTRL_POS(hrow + 3, col);
+      pthread_mutex_lock(&shm->entrances[i].sign.mutex);
       char display = shm->entrances[i].sign.display;
+      pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
       printf("  %c   |\n", display ? display : ' ');
     }
     ANSI_CTRL_POS(hrow + 4, 0);
@@ -74,11 +81,13 @@ void *man_display_handler(void *arg) {
       printf("\x1B[34m");
       printf("%d\n", i + 1);
       printf("\x1B[0m");
+
       ANSI_CTRL_POS(hrow + 1, col);
       pthread_mutex_lock(&shm->levels[i].lpr.mutex);
       char *plate = shm->entrances[i].lpr.plate;
       printf("%.6s|\n", plate[0] ? plate : "      ");
       pthread_mutex_unlock(&shm->levels[i].lpr.mutex);
+
       ANSI_CTRL_POS(hrow + 2, col);
       char temp = shm->levels[i].temp;
       printf("  %c   |\n", temp ? temp : ' ');
@@ -98,6 +107,7 @@ void *man_display_handler(void *arg) {
 
     usleep(50000);
   }
+  printf("Display Ended\n");
   return NULL;
 }
 
@@ -109,9 +119,8 @@ void *sim_display_handler(void *arg) {
   printf(ANSI_CTRL_CLEAR);
   // Queue **entry_queues = (Queue **)arg;
   SimDisplayData *data = (SimDisplayData *)arg;
-  printf("Display handler started, waiting for cars\n");
 
-  while (*data->running) {
+  while (*data->running || *data->num_cars) {
     // clear the screen
     printf("\033[2J\033[1;1H");
     // print the number of used threads
@@ -125,14 +134,19 @@ void *sim_display_handler(void *arg) {
       printf("\n");
     }
     // print in the top right corner but leave space for 16 characters
-    printf("\033[1;80H");
-    printf("Press 'q' to quit\n");
+    if (*data->running) {
+      printf("\033[1;40H");
+      printf("| Press 'q' to quit\n");
+    } else {
+      printf("\033[1;40H");
+      printf("| Exiting, waiting for manager to release cars...\n");
+      printf("\033[2;40H");
+      printf("| Press CTRL+C to force quit\n");
+    }
     // sleep for 50ms
     usleep(50000);
   }
+  // clear the screen
   printf("\033[2J\033[1;1H");
-  printf("Exiting, waiting for manager to release cars...\n");
-  printf("Press CTRL+C to force quit\n");
-
   return NULL;
 }

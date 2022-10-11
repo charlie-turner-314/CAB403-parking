@@ -1,6 +1,7 @@
 #include "simulator.h"
 #include "config.h"
 #include "delay.h"
+#include "display.h"
 #include "queue.h"
 #include "shm_parking.h"
 #include <stdio.h>
@@ -10,8 +11,12 @@
 #include <time.h>
 #include <unistd.h>
 
-// number of possible cars at any one time
-#define CAR_THREADS 50
+// number of possible cars at any one time,
+// should be okay having heaps of these, cause most threads are sleeping most of
+// the time. Allow for entire carpark capacity to be filled with cars as well as
+// a large queue
+#define CAR_THREADS (NUM_LEVELS * LEVEL_CAPACITY * 2)
+
 // get's set to 0 when the simulation is over
 int run = 1;
 int used_threads = 0;
@@ -235,7 +240,7 @@ void *car_handler(void *arg) {
     pthread_mutex_lock(&car_queue->mutex);
     while (car_item == NULL && run) {
       pthread_cond_wait(&car_queue->condition, &car_queue->mutex);
-      car_item = queue_pop_unsafe(car_queue);
+      car_item = unsafe_queue_pop_return(car_queue);
     }
     pthread_mutex_unlock(&car_queue->mutex);
     if (!run || car_item == NULL) {
@@ -248,7 +253,6 @@ void *car_handler(void *arg) {
     ct_data *data = (ct_data *)car_item->value;
     // add self to entrance queue (size 7 as 6 characters on the plate + null)
     queue_push(data->entry_queue, data->plate, 7);
-    printf("push to q %6s\n", data->plate);
     // wait until front of queue
     // while not at front of queue
     pthread_mutex_lock(&data->entry_queue->mutex);
@@ -308,36 +312,13 @@ void *input_handler() {
   while (input != 'q') {
     input = getchar();
   }
+  // clear the screen
+  printf("\033[2J\033[1;1H");
   // reset terminal
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
   system("stty echo");
 
   run = 0;
-  return NULL;
-}
-
-void *sim_display_handler(void *arg) {
-  printf("Display handler started %p\n", arg);
-  Queue **entry_queues = (Queue **)arg;
-
-  while (run) {
-    // clear the screen
-    printf("\033[2J\033[1;1H");
-    // print the number of used threads
-    printf("Number of Car threads in use: %d\n", used_threads);
-    // print the lenght of each entry queue
-    for (int i = 0; i < NUM_ENTRANCES; i++) {
-      printf("Entry %d: %zu Cars\n", i, entry_queues[i]->length);
-    }
-    //
-    // print in the top right corner but leave space for 16 characters
-    printf("\033[1;80H");
-    printf("Press 'q' to quit\n");
-    // wait 100ms
-    usleep(100000);
-  }
-  printf("Exiting...\n");
-
   return NULL;
 }
 
@@ -375,9 +356,14 @@ int main(int argc, char *argv[]) {
   pthread_t input_thread;
   pthread_create(&input_thread, NULL, input_handler, &input);
 
-  // TODO:handle the (limited) display for the simulator
+  // handle the (limited) display for the simulator
+  SimDisplayData display_data;
+  display_data.num_cars = &used_threads;
+  display_data.entry_queues = entry_queues;
+  display_data.running = &run;
+  display_data.available_plates = &plates->count;
   pthread_t display_thread;
-  pthread_create(&display_thread, NULL, sim_display_handler, entry_queues);
+  pthread_create(&display_thread, NULL, sim_display_handler, &display_data);
 
   Queue *car_queue = queue_create(0);
 
@@ -410,17 +396,7 @@ int main(int argc, char *argv[]) {
     }
     // wait between 1 and 100 ms
     rand_delay_ms(1, 100, &rand_mutex);
-
-    for (int i = 0; i < NUM_ENTRANCES; i++) {
-      printf("EntryQ: %d : ", i);
-      entry_queue_print(entry_queues[i]);
-      printf("\n");
-    }
-    printf("CarQ: ");
-    car_queue_print(car_queue);
-    printf("\n");
   }
-
   // join the threads
   // broadcast to the car_queue to wake up all the threads
   // that might be waiting for a car to enter the queue

@@ -1,13 +1,11 @@
 // A thread-safe queue implementation.
 #include "queue.h"
-#include "queue.h"
 #include "simulator.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// Create a new queue.
 Queue *queue_create(int id) {
   Queue *q = malloc(sizeof(Queue));
   q->id = id;
@@ -28,10 +26,7 @@ Queue *queue_create(int id) {
 }
 
 QItem *queue_peek(Queue *q) {
-  // NOTE: removed the mutex lock but keep in mind for later if something breaks
-  // pthread_mutex_lock(&q->mutex);
   QItem *item = q->head;
-  // pthread_mutex_unlock(&q->mutex);
   return item;
 }
 
@@ -89,10 +84,7 @@ void queue_pop(Queue *q) {
   return;
 }
 
-// Pop an item from the front of the queue and return it.
-// unsafe, assumes caller has locked the mutex.
-// does not free memory used by the item.
-QItem *queue_pop_unsafe(Queue *q) {
+QItem *unsafe_queue_pop_return(Queue *q) {
   if (!q || !q->head) {
     return NULL;
   }
@@ -106,7 +98,6 @@ QItem *queue_pop_unsafe(Queue *q) {
   return item;
 }
 
-// Destroy a queue.
 bool destroy_queue(Queue *q) {
   if (q == NULL) {
     return false;
@@ -134,9 +125,7 @@ bool destroy_queue(Queue *q) {
 }
 
 // print entrance item
-static void entrance_item_print(char *plate) {
-  printf("'%6s' ", plate);
-}
+static void entrance_item_print(char *plate) { printf("'%6s' ", plate); }
 
 // print entrance queue
 void entry_queue_print(Queue *q) {
@@ -147,8 +136,7 @@ void entry_queue_print(Queue *q) {
   if (!node)
     printf("empty");
 
-  while (node)
-  {
+  while (node) {
     entrance_item_print(node->value);
     node = node->next;
   }
@@ -169,11 +157,9 @@ void car_queue_print(Queue *q) {
   if (!node)
     printf("empty");
 
-  while (node)
-  {
+  while (node) {
     car_item_print(node->value);
     node = node->next;
   }
   pthread_mutex_unlock(&q->mutex);
 }
-

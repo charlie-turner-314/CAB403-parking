@@ -43,8 +43,8 @@ to get current  -> stored_int & 0x0F (0x0F is 00001111 in binary)
 pthread_mutex_t rand_mutex;
 // mutex for accessing the hashtable of vehicles, hashtable should be fast
 // enough to not be a performance problem
-pthread_mutex_t plate_hashtable_mutex;
-ht_t *number_plates_ht;
+pthread_mutex_t plates_mutex;
+ht_t *plates_ht;
 
 // hashtable for storing capacity of each level
 pthread_mutex_t capacity_hashtable_mutex;
@@ -98,9 +98,9 @@ int ts_get_number_plate(char *plate) {
   strncpy(null_terminated_plate, plate, 7);
   null_terminated_plate[6] = '\0';
   // ----------
-  pthread_mutex_lock(&plate_hashtable_mutex);
-  value = htab_get(number_plates_ht, null_terminated_plate);
-  pthread_mutex_unlock(&plate_hashtable_mutex);
+  pthread_mutex_lock(&plates_mutex);
+  value = htab_get(plates_ht, null_terminated_plate);
+  pthread_mutex_unlock(&plates_mutex);
   return value;
 }
 
@@ -112,11 +112,11 @@ bool ts_set_assigned_level(char *plate, int level) {
   null_terminated_plate[6] = '\0';
   // ----------
   bool success;
-  pthread_mutex_lock(&plate_hashtable_mutex);
-  int current_value = htab_get(number_plates_ht, null_terminated_plate);
+  pthread_mutex_lock(&plates_mutex);
+  int current_value = htab_get(plates_ht, null_terminated_plate);
   int new_value = SET_ASSIGNED_LEVEL(current_value, level);
-  success = htab_set(number_plates_ht, null_terminated_plate, new_value);
-  pthread_mutex_unlock(&plate_hashtable_mutex);
+  success = htab_set(plates_ht, null_terminated_plate, new_value);
+  pthread_mutex_unlock(&plates_mutex);
   return success;
 }
 
@@ -128,11 +128,11 @@ bool ts_set_current_level(char *plate, int level) {
   null_terminated_plate[6] = '\0';
   // ----------
   bool success;
-  pthread_mutex_lock(&plate_hashtable_mutex);
-  int current_value = htab_get(number_plates_ht, null_terminated_plate);
+  pthread_mutex_lock(&plates_mutex);
+  int current_value = htab_get(plates_ht, null_terminated_plate);
   int new_value = SET_CURRENT_LEVEL(current_value, level);
-  success = htab_set(number_plates_ht, null_terminated_plate, new_value);
-  pthread_mutex_unlock(&plate_hashtable_mutex);
+  success = htab_set(plates_ht, null_terminated_plate, new_value);
+  pthread_mutex_unlock(&plates_mutex);
   return success;
 }
 
@@ -295,14 +295,14 @@ void *exit_handler(void *arg) {
 int main(void) {
   // initialise local mutexes
   pthread_mutex_init(&rand_mutex, NULL);
-  pthread_mutex_init(&plate_hashtable_mutex, NULL);
+  pthread_mutex_init(&plates_mutex, NULL);
   pthread_mutex_init(&capacity_hashtable_mutex, NULL);
 
   // get the shared memory object
   shm = get_shm(SHM_NAME);
 
   // read the allowed number plates from a file into hashtable
-  number_plates_ht = ht_from_file("plates.txt");
+  plates_ht = ht_from_file("plates.txt");
 
   // initialise level capacity hashtable
   level_capacity_ht = htab_create(level_capacity_ht, NUM_LEVELS);
@@ -353,8 +353,11 @@ int main(void) {
     exit_threads[i] = &thread;
   }
 
+  ManDisplayData display_data;
+  display_data.ht = level_capacity_ht;
+  display_data.shm = shm;
   pthread_t display_thread;
-  pthread_create(&display_thread, NULL, display_handler, NULL);
+  pthread_create(&display_thread, NULL, man_display_handler, &display_data);
 
   // wait for threads to finish and clean up their resources
   for (int i = 0; i < NUM_ENTRANCES; i++) {
@@ -370,22 +373,4 @@ int main(void) {
     pthread_join(*exit_threads[i], NULL);
     free(exit_args[i]);
   }
-
-  // set the entrance 4 entry sign to '4'
-  // printf("Plate is: %.6s\n", shm->entrances[1].lpr.plate);
-  // // set the plate to NULL characters
-  // pthread_mutex_lock(&shm->entrances[1].lpr.mutex);
-  // memset(shm->entrances[1].lpr.plate, '\0', 6);
-  // pthread_cond_signal(&shm->entrances[1].lpr.condition);
-  // pthread_mutex_unlock(&shm->entrances[1].lpr.mutex);
-
-  // InfoSign *sign = &shm->entrances[1].sign;
-  // pthread_mutex_lock(&sign->mutex);
-  // sign->display = '4';
-  // pthread_cond_signal(&sign->condition);
-  // pthread_mutex_unlock(&sign->mutex);
-  // destroy_shm(shm);
-
-  // - Threads for each entry/exit/level
-  // - Thread for display
 }

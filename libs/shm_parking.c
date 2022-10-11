@@ -109,12 +109,15 @@ bool destroy_shm(struct SharedMemory *shm) {
     pthread_cond_destroy(&shm->entrances[entrance].lpr.condition);
     pthread_cond_destroy(&shm->entrances[entrance].gate.condition);
     pthread_cond_destroy(&shm->entrances[entrance].sign.condition);
+    // set boomgates to 'C' for closed
+    shm->entrances[entrance].gate.status = 'C';
   }
   for (int exit = 0; exit < NUM_EXITS; exit++) {
     pthread_mutex_destroy(&shm->exits[exit].lpr.mutex);
     pthread_mutex_destroy(&shm->exits[exit].gate.mutex);
     pthread_cond_destroy(&shm->exits[exit].lpr.condition);
     pthread_cond_destroy(&shm->exits[exit].gate.condition);
+    shm->exits[exit].gate.status = 'C';
   }
   for (int level = 0; level < NUM_LEVELS; level++) {
     pthread_mutex_destroy(&shm->levels[level].lpr.mutex);

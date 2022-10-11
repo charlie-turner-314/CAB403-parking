@@ -7,10 +7,9 @@
 // ==============
 
 typedef struct car_thread_data {
-  Queue *entry_queue;          // pointer to the entry queue
-  char plate[7];               // number plate of the car
-  pthread_mutex_t *rand_mutex; // mutex for random number generator
-  struct SharedMemory *shm;    // pointer to the shared memory
+  Queue *entry_queue;       // pointer to the entry queue
+  char plate[7];            // number plate of the car
+  struct SharedMemory *shm; // pointer to the shared memory
 } ct_data;
 
 // attempt entry -> trigger the LPR and wait for entrance thread to open the

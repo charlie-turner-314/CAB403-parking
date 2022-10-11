@@ -1,6 +1,7 @@
 #include "display.h"
 #include "config.h"
 #include "shm_parking.h"
+#include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,7 +91,9 @@ void *man_display_handler(void *arg) {
       printf("  %d  |\n", LEVEL_CAPACITY);
       ANSI_CTRL_POS(hrow + 5, col);
       char levelstr[2] = {'0' + i, '\0'};
+      pthread_mutex_lock(data->ht_mutex);
       printf("  %d  |\n", htab_get(data->ht, levelstr));
+      pthread_mutex_unlock(data->ht_mutex);
     }
 
     usleep(50000);

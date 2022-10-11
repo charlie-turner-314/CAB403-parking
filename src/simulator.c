@@ -4,6 +4,7 @@
 #include "display.h"
 #include "queue.h"
 #include "shm_parking.h"
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,7 @@ typedef struct Plate {
 // Structure for storing a linked list of number plates
 // and the number of number plates available
 typedef struct NumberPlates {
+  pthread_mutex_t mutex;
   size_t count;
   Plate *head;
 } NumberPlates;
@@ -43,13 +45,15 @@ int add_plate(NumberPlates *plates, char *platestr) {
   Plate *plate = malloc(sizeof(Plate));
   if (plate == NULL) {
     perror("Error allocating memory for plate");
-    return 0;
+    exit(EXIT_FAILURE);
   }
   // copy number into plate struct until null terminator or 7 characters
   memccpy(plate->plate, platestr, 0, 7);
+  pthread_mutex_lock(&plates->mutex);
   plate->next = plates->head;
   plates->head = plate;
   plates->count++;
+  pthread_mutex_unlock(&plates->mutex);
   return 1;
 }
 
@@ -67,6 +71,7 @@ NumberPlates *list_from_file(char *FILENAME) {
   ssize_t linelen;
   // create the linked list
   NumberPlates *plates = malloc(sizeof(NumberPlates));
+  pthread_mutex_init(&plates->mutex, NULL);
   plates->count = 0;
   plates->head = NULL;
   // add the plates to the list
@@ -85,15 +90,14 @@ NumberPlates *list_from_file(char *FILENAME) {
 // generate a car with a random number plate
 // 50% of the time will be within the hashtable
 char *random_available_plate(NumberPlates *plates) {
-  char *plate = NULL;
-  // pthread_mutex_lock(&rand_mutex);
+  char *plate = calloc(7, sizeof(char));
+  pthread_mutex_lock(&rand_mutex); // ensure access to rand
   int allowed = rand() % 2;
+  pthread_mutex_lock(&plates->mutex); // ensure access to the plates
   if (!plates->count)
     allowed = 0;
   if (allowed) {
-    plate = calloc(7, sizeof(char));
     size_t index = rand() % plates->count;
-    pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
     Plate *plate_node = plates->head;
     Plate *prev = NULL;
     // pretty slow, but it works for now
@@ -116,19 +120,18 @@ char *random_available_plate(NumberPlates *plates) {
     memccpy(plate, plate_node->plate, 0, 7);
     // free the deleted plate
     free(plate_node);
+  } else {
+    // generate random licence plate
+    for (int j = 0; j < 6; j++) {
+      if (j < 3)
+        plate[j] = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rand() % 26]);
+      else
+        plate[j] = "0123456789"[(rand() % 10)];
+    }
+    plate[6] = '\0';
   }
-  // Removed random generator for now
-  //     else {
-  //     // generate random licence plate
-  //     for (int j = 0; j < 6; j++) {
-  //       if (j < 3)
-  //         plate[j] = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rand() % 26]);
-  //       else
-  //         plate[j] = "0123456789"[(rand() % 10)];
-  //     }
-  //     plate[6] = '\0';
-  //     pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
-  //   }
+  pthread_mutex_unlock(&plates->mutex); // unlock plates mutex
+  pthread_mutex_unlock(&rand_mutex);    // unlock mutex for rand
   return plate;
 }
 
@@ -177,12 +180,14 @@ int attempt_entry(ct_data *car_data) {
   int level_id;
   // wait on the entrance sign
   pthread_mutex_lock(&entrance->sign.mutex);
-  pthread_cond_wait(&entrance->sign.condition, &entrance->sign.mutex);
+  while (entrance->sign.display == '\0') {
+    pthread_cond_wait(&entrance->sign.condition, &entrance->sign.mutex);
+  }
   char display = entrance->sign.display;
   pthread_mutex_unlock(&entrance->sign.mutex);
 
-  if (display > '0' && display < '9') { // level number
-    level_id = display - '1';           // convert to level index
+  if (display > '0' && display <= '9') { // level number
+    level_id = display - '1';            // convert to level index
     // wait at gate if given a level
     wait_at_gate(&entrance->gate);
   } else { // Full or Not allowed Or Evacuating
@@ -263,6 +268,8 @@ void *car_handler(void *arg) {
     pthread_mutex_unlock(&data->entry_queue->mutex);
     // self is at front of entry queue
     int level_id = attempt_entry(data);
+
+    // +++ Not Touching Shared Memory +++
     // if level_id is -1 then the car is not allowed in
     if (level_id == -1) {
       pthread_mutex_lock(&used_threads_mutex);
@@ -279,6 +286,7 @@ void *car_handler(void *arg) {
       level_id = rand() % NUM_LEVELS;
     }
     pthread_mutex_unlock(&rand_mutex);
+    // +++ END not Touching Shared Memory +++
 
     // park the car on the given level
     park_car(data, level_id);
@@ -288,11 +296,13 @@ void *car_handler(void *arg) {
 
     // add licence plate back in the available pool
     add_plate(plates, data->plate);
+    free(data);
+    free(car_item);
+
+    // update used threads
     pthread_mutex_lock(&used_threads_mutex);
     used_threads--;
     pthread_mutex_unlock(&used_threads_mutex);
-    free(data);
-    free(car_item);
   }
   return NULL;
 }
@@ -322,15 +332,8 @@ void *input_handler() {
   return NULL;
 }
 
-int main(int argc, char *argv[]) {
-  // allow passing in a seed for rand
-  // the seed '3141592' nicely queues the first two cars at entrances[1] for
-  // debugging
-  if (argc > 1) {
-    int c;
-    c = atoi(argv[1]);
-    srand(c);
-  }
+int main(void) {
+  srand(time(NULL));
   // initialise the shared memory
   struct SharedMemory *shm = create_shm(SHM_NAME);
 
@@ -380,14 +383,16 @@ int main(int argc, char *argv[]) {
     if (plate) {
       // create a car thread
       ct_data *data = calloc(1, sizeof(ct_data));
+      if (!data) {
+        perror("Calloc car data");
+        exit(EXIT_FAILURE);
+      }
       memccpy(data->plate, plate, 0, 7);
-      free(plate);
 
       pthread_mutex_lock(&rand_mutex);
       data->entry_queue = entry_queues[rand() % NUM_LEVELS];
       pthread_mutex_unlock(&rand_mutex);
 
-      data->rand_mutex = &rand_mutex;
       data->shm = shm;
       // add the car to the queue
       queue_push(car_queue, data, sizeof(ct_data));

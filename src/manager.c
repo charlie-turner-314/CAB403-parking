@@ -77,11 +77,7 @@ struct LevelArgs {
 
 // thread-safe access to capacity of a level
 int ts_cars_on_level(int l) {
-  char *level = malloc(2);
-  if (!level) {
-    perror("malloc capacity");
-    exit(1);
-  }
+  char level[2];
   level[0] = INT_TO_CHAR(l);
   level[1] = '\0';
   int cars;
@@ -190,6 +186,7 @@ ht_t *ht_from_file(char *filename) {
     line[6] = '\0';           // null-terminate the plate if not already
     htab_set(ht, line, 0xFF); // set the value to 0xFF (unassigned)
   }
+  free(line);
   return ht;
 }
 
@@ -229,7 +226,7 @@ void *entry_handler(void *arg) {
         level = 'F'; // Carpark Full
       } else {
         pthread_mutex_lock(&rand_mutex);
-        int levelID = rand() % levels[0]; // random available level index
+        int levelID = rand() % levels[0] + 1; // random available level index
         pthread_mutex_unlock(&rand_mutex);
         level = levels[levelID]; // random available level (integer)
         // increment the level capacity
@@ -282,10 +279,10 @@ void *entry_handler(void *arg) {
 void *level_handler(void *arg) {
   int *lid = (int *)arg;
   int level_id = *lid;
+  struct Level *level = &shm->levels[level_id];
   // forever stuck checking for cars
   while (true) {
     // wait at the lpr for a car to arrive
-    struct Level *level = &shm->levels[level_id];
     wait_for_lpr(&level->lpr);
     // read the plate
     char *plate = level->lpr.plate;
@@ -318,10 +315,9 @@ void *level_handler(void *arg) {
         // Can't really communicate with the cars as there is no sign
         printf("Car trying to enter full level\n");
       }
+      // set the current level for the car
+      ts_set_current_level(plate, level_id);
     }
-
-    // set the current level for the car
-    ts_set_current_level(plate, level_id);
 
     // clear the lpr
     pthread_mutex_lock(&level->lpr.mutex);
@@ -381,7 +377,7 @@ int main(int argc, char *argv[]) {
 
   // create entrance threads
   // -------------------------------
-  pthread_t *entry_threads[NUM_ENTRANCES];
+  pthread_t entry_threads[NUM_ENTRANCES];
   struct EntryArgs *entry_args[NUM_ENTRANCES];
   for (int i = 0; i < NUM_ENTRANCES; i++) {
     struct EntryArgs *args = calloc(1, sizeof(struct EntryArgs));
@@ -394,11 +390,11 @@ int main(int argc, char *argv[]) {
     pthread_t thread;
     // pass in i
     pthread_create(&thread, NULL, entry_handler, args);
-    entry_threads[i] = &thread;
+    entry_threads[i] = thread;
   }
   // create level threads
   // -------------------------------
-  pthread_t *level_threads[NUM_LEVELS];
+  pthread_t level_threads[NUM_LEVELS];
   struct LevelArgs *level_args[NUM_LEVELS];
   for (int i = 0; i < NUM_ENTRANCES; i++) {
     struct LevelArgs *args = calloc(1, sizeof(struct LevelArgs));
@@ -411,11 +407,11 @@ int main(int argc, char *argv[]) {
     pthread_t thread;
     // pass in i
     pthread_create(&thread, NULL, level_handler, args);
-    entry_threads[i] = &thread;
+    level_threads[i] = thread;
   }
   // create exit threads
   // -------------------------------
-  pthread_t *exit_threads[NUM_EXITS];
+  pthread_t exit_threads[NUM_EXITS];
   struct ExitArgs *exit_args[NUM_EXITS];
   for (int i = 0; i < NUM_EXITS; i++) {
     struct ExitArgs *args = calloc(1, sizeof(struct ExitArgs));
@@ -428,7 +424,7 @@ int main(int argc, char *argv[]) {
     pthread_t thread;
     // pass in i
     pthread_create(&thread, NULL, exit_handler, args);
-    exit_threads[i] = &thread;
+    exit_threads[i] = thread;
   }
 
   // don't run the display if we don't want it
@@ -443,16 +439,16 @@ int main(int argc, char *argv[]) {
 
   // wait for threads to finish and clean up their resources
   for (int i = 0; i < NUM_ENTRANCES; i++) {
-    pthread_join(*entry_threads[i], NULL);
+    pthread_join(entry_threads[i], NULL);
     free(entry_args[i]);
   }
 
   for (int i = 0; i < NUM_LEVELS; i++) {
-    pthread_join(*level_threads[i], NULL);
+    pthread_join(level_threads[i], NULL);
     free(level_args[i]);
   }
   for (int i = 0; i < NUM_EXITS; i++) {
-    pthread_join(*exit_threads[i], NULL);
+    pthread_join(exit_threads[i], NULL);
     free(exit_args[i]);
   }
 }

@@ -307,7 +307,7 @@ void *level_handler(void *arg) {
       }
     } else if (assigned != level_id) {
       // they are on the wrong level (or not assigned at all), re-assign them
-      // and let them in
+      // if there is room
       if (ts_cars_on_level(level_id) < LEVEL_CAPACITY) {
         ts_add_cars_to_level(assigned, -1);
         ts_add_cars_to_level(level_id, 1);
@@ -315,9 +315,10 @@ void *level_handler(void *arg) {
         // Can't really communicate with the cars as there is no sign
         printf("Car trying to enter full level\n");
       }
-      // set the current level for the car
-      ts_set_current_level(plate, level_id);
     }
+
+    // set the current level for the car
+    ts_set_current_level(plate, level_id);
 
     // clear the lpr
     pthread_mutex_lock(&level->lpr.mutex);
@@ -336,7 +337,6 @@ void *exit_handler(void *arg) {
     wait_for_lpr(&exit->lpr);
     // should be a licence plate there now, so read it
     char *plate = exit->lpr.plate;
-
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
     exit->gate.status = 'R';

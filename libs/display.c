@@ -171,7 +171,5 @@ void *sim_display_handler(void *arg) {
     // sleep for 50ms
     usleep(50000);
   }
-  // clear the screen
-  printf("\033[2J\033[1;1H");
   return NULL;
 }

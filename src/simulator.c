@@ -483,6 +483,14 @@ int main(int argc, char *argv[]) {
   }
   free(plates);
 
+  // join gate threads
+  for (int i = 0; i < NUM_ENTRANCES + NUM_EXITS; i++) {
+    int jres = pthread_join(gate_threads[i], NULL);
+    if (jres != 0) {
+      perror("Error joining thread");
+    }
+  }
+
   // destroy mutexes
   pthread_mutex_destroy(&rand_mutex);
   // destroy the queues

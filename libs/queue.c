@@ -129,6 +129,10 @@ static void entrance_item_print(char *plate) { printf("'%6s' ", plate); }
 
 // print entrance queue
 void entry_queue_print(Queue *q) {
+  if (q->head == NULL) {
+    printf("No Head");
+    return;
+  }
 
   pthread_mutex_lock(&q->mutex);
   QItem *node = q->head;

@@ -16,7 +16,7 @@
 // should be okay having heaps of these, cause most threads are sleeping most of
 // the time. Allow for entire carpark capacity to be filled with cars as well as
 // a large queue
-#define CAR_THREADS (NUM_LEVELS * LEVEL_CAPACITY * 2)
+#define CAR_THREADS 10 // (NUM_LEVELS * LEVEL_CAPACITY * 2)
 
 // get's set to 0 when the simulation is over
 int run = 1;
@@ -219,17 +219,18 @@ void exit_car(ct_data *car_data, int level_id) {
   int exit = rand() % NUM_EXITS;
   pthread_mutex_unlock(&rand_mutex);
   // trigger exit lpr
-  pthread_mutex_lock(&car_data->shm->exits[exit].lpr.mutex);
-  // wait for exit lpr to be free (cleared by manager)
-  while (car_data->shm->exits[exit].lpr.plate[0] != '\0') {
-    pthread_cond_wait(&car_data->shm->exits[exit].lpr.condition,
-                      &car_data->shm->exits[exit].lpr.mutex);
-  }
-  // write the car's plate to the exit lpr
-  memccpy(car_data->shm->exits[exit].lpr.plate, car_data->plate, 0, 6);
-  // broadcast to any threads waiting on the exit lpr and unlock mutex
-  pthread_cond_broadcast(&car_data->shm->exits[exit].lpr.condition);
-  pthread_mutex_unlock(&car_data->shm->exits[exit].lpr.mutex);
+  send_licence_plate(car_data->plate, &car_data->shm->exits[exit].lpr);
+  // pthread_mutex_lock(&car_data->shm->exits[exit].lpr.mutex);
+  // // wait for exit lpr to be free (cleared by manager)
+  // while (car_data->shm->exits[exit].lpr.plate[0] != '\0') {
+  //   pthread_cond_wait(&car_data->shm->exits[exit].lpr.condition,
+  //                     &car_data->shm->exits[exit].lpr.mutex);
+  // }
+  // // write the car's plate to the exit lpr
+  // memccpy(car_data->shm->exits[exit].lpr.plate, car_data->plate, 0, 6);
+  // // broadcast to any threads waiting on the exit lpr and unlock mutex
+  // pthread_cond_broadcast(&car_data->shm->exits[exit].lpr.condition);
+  // pthread_mutex_unlock(&car_data->shm->exits[exit].lpr.mutex);
   // wait for gate to open
   wait_at_gate(&car_data->shm->exits[exit].gate);
   // we are all done
@@ -263,23 +264,29 @@ void *car_handler(void *arg) {
     queue_push(data->entry_queue, data->plate, 7);
     // wait until front of queue
     // while not at front of queue
+    printf("%s Queue - Waiting\n", data->plate);
     pthread_mutex_lock(&data->entry_queue->mutex);
     while (strcmp(queue_peek(data->entry_queue)->value, data->plate) != 0) {
       pthread_cond_wait(&data->entry_queue->condition,
                         &data->entry_queue->mutex);
     }
     pthread_mutex_unlock(&data->entry_queue->mutex);
+    printf("%s Queue - Success\n", data->plate);
     // self is at front of entry queue
 
     // Assigned level, or -1 if not allowed
+    printf("%s Entry - Attempt\n", data->plate);
     int level_id = attempt_entry(data);
+    printf("%s Entry - Success\n", data->plate);
 
     // +++ Not Touching Shared Memory +++
     // if level_id is -1 then the car is not allowed in
     if (level_id == -1) {
+      printf("%s Entry - Not Allowed\n", data->plate);
       pthread_mutex_lock(&used_threads_mutex);
       used_threads--;
       pthread_mutex_unlock(&used_threads_mutex);
+      printf("%s Destroy - Success \n", data->plate);
       free(data);
       free(car_item);
       continue;
@@ -294,10 +301,15 @@ void *car_handler(void *arg) {
     // +++ END not Touching Shared Memory +++
 
     // park the car on the given level
+
+    printf("%s Park - Attempt\n", data->plate);
     park_car(data, level_id);
+    printf("%s Park - Success\n", data->plate);
 
     // exit the carpark
+    printf("%s Exit - Attempt\n", data->plate);
     exit_car(data, level_id);
+    printf("%s Exit - Success\n", data->plate);
 
     // add licence plate back in the available pool
     add_plate(plates, data->plate);
@@ -339,7 +351,7 @@ void *input_handler() {
 
 void *gate_handler(void *arg) {
   struct Boomgate *gate = (struct Boomgate *)arg;
-  while (run) {
+  while (true) {
     pthread_mutex_lock(&gate->mutex);
     while (!(gate->status == 'R' || gate->status == 'L') && run) {
       pthread_cond_wait(&gate->condition, &gate->mutex);
@@ -360,9 +372,9 @@ void *gate_handler(void *arg) {
     }
     pthread_mutex_unlock(&gate->mutex);
   }
-  // stopped running, open the gate
+  // stopped running, close the gate
   pthread_mutex_lock(&gate->mutex);
-  gate->status = 'O';
+  gate->status = 'C';
   pthread_cond_broadcast(&gate->condition);
   pthread_mutex_unlock(&gate->mutex);
   return NULL;

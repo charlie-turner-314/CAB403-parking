@@ -105,6 +105,30 @@ void *man_display_handler(void *arg) {
       pthread_mutex_unlock(data->ht_mutex);
     }
 
+    ANSI_CTRL_POS(hrow + 6, 0);
+    printf("=================== Exits =======================\n\n");
+    printf("  LPR|\n");
+    printf(" GATE|\n");
+    hrow = 15;
+    for (int i = 0; i < NUM_EXITS; i++) {
+      int col = i * 6 + i + 7;
+      ANSI_CTRL_POS(hrow, col + 2);
+      printf("\x1B[34m");
+      printf("%d\n", i + 1);
+      printf("\x1B[0m");
+
+      ANSI_CTRL_POS(hrow + 1, col);
+      pthread_mutex_lock(&shm->exits[i].lpr.mutex);
+      char *plate = shm->exits[i].lpr.plate;
+      printf("%.6s|\n", plate[0] ? plate : "      ");
+      pthread_mutex_unlock(&shm->exits[i].lpr.mutex);
+
+      ANSI_CTRL_POS(hrow + 2, col);
+      pthread_mutex_lock(&shm->exits[i].gate.mutex);
+      char status = shm->exits[i].gate.status;
+      pthread_mutex_unlock(&shm->exits[i].gate.mutex);
+      printf("  %c   |\n", status ? status : ' ');
+    }
     usleep(50000);
   }
   printf("Display Ended\n");
@@ -121,8 +145,9 @@ void *sim_display_handler(void *arg) {
   SimDisplayData *data = (SimDisplayData *)arg;
 
   while (*data->running || *data->num_cars) {
-    // clear the screen
+    // // clear the screen
     printf("\033[2J\033[1;1H");
+
     // print the number of used threads
     printf("Number of Car threads in use: %d\n", *data->num_cars);
     // print the number of available number plates
@@ -144,7 +169,7 @@ void *sim_display_handler(void *arg) {
       printf("| Press CTRL+C to force quit\n");
     }
     // sleep for 50ms
-    usleep(50000);
+    usleep(1000000);
   }
   // clear the screen
   printf("\033[2J\033[1;1H");

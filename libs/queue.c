@@ -1,6 +1,7 @@
 // A thread-safe queue implementation.
 #include "queue.h"
 #include "simulator.h"
+#include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +57,7 @@ bool queue_push(Queue *q, void *value, size_t size) {
     q->tail = new_item;
   }
   // signal the condition variable
-  pthread_cond_signal(&q->condition);
+  pthread_cond_broadcast(&q->condition);
   pthread_mutex_unlock(&q->mutex);
   q->length++;
   return true;
@@ -110,7 +111,6 @@ bool destroy_queue(Queue *q) {
     free(temp);
   }
   int mutex_destroy = pthread_mutex_destroy(&q->mutex);
-  printf("queue %d mutex destroy result: %d\n", q->id, mutex_destroy);
   if (mutex_destroy) {
     perror("Error destroying mutex");
     exit(EXIT_FAILURE);

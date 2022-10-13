@@ -1,6 +1,7 @@
 #include "display.h"
 #include "config.h"
 #include "shm_parking.h"
+#include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,15 +49,22 @@ void *man_display_handler(void *arg) {
       printf("%d\n", i + 1);
       printf("\x1B[0m");
       ANSI_CTRL_POS(hrow + 1, col);
+
       pthread_mutex_lock(&shm->entrances[i].lpr.mutex);
       char *plate = shm->entrances[i].lpr.plate;
       printf("%.6s|\n", plate[0] ? plate : "      ");
       pthread_mutex_unlock(&shm->entrances[i].lpr.mutex);
+
       ANSI_CTRL_POS(hrow + 2, col);
+      pthread_mutex_lock(&shm->entrances[i].gate.mutex);
       char status = shm->entrances[i].gate.status;
+      pthread_mutex_unlock(&shm->entrances[i].gate.mutex);
       printf("  %c   |\n", status ? status : ' ');
+
       ANSI_CTRL_POS(hrow + 3, col);
+      pthread_mutex_lock(&shm->entrances[i].sign.mutex);
       char display = shm->entrances[i].sign.display;
+      pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
       printf("  %c   |\n", display ? display : ' ');
     }
     ANSI_CTRL_POS(hrow + 4, 0);
@@ -73,11 +81,13 @@ void *man_display_handler(void *arg) {
       printf("\x1B[34m");
       printf("%d\n", i + 1);
       printf("\x1B[0m");
+
       ANSI_CTRL_POS(hrow + 1, col);
       pthread_mutex_lock(&shm->levels[i].lpr.mutex);
       char *plate = shm->entrances[i].lpr.plate;
       printf("%.6s|\n", plate[0] ? plate : "      ");
       pthread_mutex_unlock(&shm->levels[i].lpr.mutex);
+
       ANSI_CTRL_POS(hrow + 2, col);
       char temp = shm->levels[i].temp;
       printf("  %c   |\n", temp ? temp : ' ');
@@ -90,11 +100,38 @@ void *man_display_handler(void *arg) {
       printf("  %d  |\n", LEVEL_CAPACITY);
       ANSI_CTRL_POS(hrow + 5, col);
       char levelstr[2] = {'0' + i, '\0'};
+      pthread_mutex_lock(data->ht_mutex);
       printf("  %d  |\n", htab_get(data->ht, levelstr));
+      pthread_mutex_unlock(data->ht_mutex);
     }
 
+    ANSI_CTRL_POS(hrow + 6, 0);
+    printf("=================== Exits =======================\n\n");
+    printf("  LPR|\n");
+    printf(" GATE|\n");
+    hrow = 15;
+    for (int i = 0; i < NUM_EXITS; i++) {
+      int col = i * 6 + i + 7;
+      ANSI_CTRL_POS(hrow, col + 2);
+      printf("\x1B[34m");
+      printf("%d\n", i + 1);
+      printf("\x1B[0m");
+
+      ANSI_CTRL_POS(hrow + 1, col);
+      pthread_mutex_lock(&shm->exits[i].lpr.mutex);
+      char *plate = shm->exits[i].lpr.plate;
+      printf("%.6s|\n", plate[0] ? plate : "      ");
+      pthread_mutex_unlock(&shm->exits[i].lpr.mutex);
+
+      ANSI_CTRL_POS(hrow + 2, col);
+      pthread_mutex_lock(&shm->exits[i].gate.mutex);
+      char status = shm->exits[i].gate.status;
+      pthread_mutex_unlock(&shm->exits[i].gate.mutex);
+      printf("  %c   |\n", status ? status : ' ');
+    }
     usleep(50000);
   }
+  printf("Display Ended\n");
   return NULL;
 }
 
@@ -106,11 +143,11 @@ void *sim_display_handler(void *arg) {
   printf(ANSI_CTRL_CLEAR);
   // Queue **entry_queues = (Queue **)arg;
   SimDisplayData *data = (SimDisplayData *)arg;
-  printf("Display handler started, waiting for cars\n");
 
-  while (*data->running) {
-    // clear the screen
+  while (*data->running || *data->num_cars) {
+    // // clear the screen
     printf("\033[2J\033[1;1H");
+
     // print the number of used threads
     printf("Number of Car threads in use: %d\n", *data->num_cars);
     // print the number of available number plates
@@ -122,14 +159,17 @@ void *sim_display_handler(void *arg) {
       printf("\n");
     }
     // print in the top right corner but leave space for 16 characters
-    printf("\033[1;80H");
-    printf("Press 'q' to quit\n");
+    if (*data->running) {
+      printf("\033[1;40H");
+      printf("| Press 'q' to quit\n");
+    } else {
+      printf("\033[1;40H");
+      printf("| Exiting, waiting for manager to release cars...\n");
+      printf("\033[2;40H");
+      printf("| Press CTRL+C to force quit\n");
+    }
     // sleep for 50ms
     usleep(50000);
   }
-  printf("\033[2J\033[1;1H");
-  printf("Exiting, waiting for manager to release cars...\n");
-  printf("Press CTRL+C to force quit\n");
-
   return NULL;
 }

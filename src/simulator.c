@@ -4,6 +4,7 @@
 #include "display.h"
 #include "queue.h"
 #include "shm_parking.h"
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,7 @@ typedef struct Plate {
 // Structure for storing a linked list of number plates
 // and the number of number plates available
 typedef struct NumberPlates {
+  pthread_mutex_t mutex;
   size_t count;
   Plate *head;
 } NumberPlates;
@@ -43,13 +45,15 @@ int add_plate(NumberPlates *plates, char *platestr) {
   Plate *plate = malloc(sizeof(Plate));
   if (plate == NULL) {
     perror("Error allocating memory for plate");
-    return 0;
+    exit(EXIT_FAILURE);
   }
   // copy number into plate struct until null terminator or 7 characters
   memccpy(plate->plate, platestr, 0, 7);
+  pthread_mutex_lock(&plates->mutex);
   plate->next = plates->head;
   plates->head = plate;
-  plates->count++;
+  plates->count += 1;
+  pthread_mutex_unlock(&plates->mutex);
   return 1;
 }
 
@@ -67,6 +71,11 @@ NumberPlates *list_from_file(char *FILENAME) {
   ssize_t linelen;
   // create the linked list
   NumberPlates *plates = malloc(sizeof(NumberPlates));
+  if (!plates) {
+    perror("Error allocating memory for plates");
+    exit(EXIT_FAILURE);
+  }
+  pthread_mutex_init(&plates->mutex, NULL);
   plates->count = 0;
   plates->head = NULL;
   // add the plates to the list
@@ -85,15 +94,21 @@ NumberPlates *list_from_file(char *FILENAME) {
 // generate a car with a random number plate
 // 50% of the time will be within the hashtable
 char *random_available_plate(NumberPlates *plates) {
-  char *plate = NULL;
-  // pthread_mutex_lock(&rand_mutex);
+  char *plate = calloc(7, sizeof(char));
+  if (!plate) {
+    perror("Error allocating memory for plate");
+    exit(EXIT_FAILURE);
+  }
+  pthread_mutex_lock(&rand_mutex); // ensure access to rand
   int allowed = rand() % 2;
+  pthread_mutex_unlock(&rand_mutex);
+  pthread_mutex_lock(&plates->mutex); // ensure access to the plates
   if (!plates->count)
     allowed = 0;
   if (allowed) {
-    plate = calloc(7, sizeof(char));
+    pthread_mutex_lock(&rand_mutex); // ensure access to rand
     size_t index = rand() % plates->count;
-    pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
+    pthread_mutex_unlock(&rand_mutex);
     Plate *plate_node = plates->head;
     Plate *prev = NULL;
     // pretty slow, but it works for now
@@ -116,40 +131,26 @@ char *random_available_plate(NumberPlates *plates) {
     memccpy(plate, plate_node->plate, 0, 7);
     // free the deleted plate
     free(plate_node);
+  } else {
+    // generate random licence plate
+    for (int j = 0; j < 6; j++) {
+      if (j < 3)
+        plate[j] = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rand() % 26]);
+      else
+        plate[j] = "0123456789"[(rand() % 10)];
+    }
+    plate[6] = '\0';
   }
-  // Removed random generator for now
-  //     else {
-  //     // generate random licence plate
-  //     for (int j = 0; j < 6; j++) {
-  //       if (j < 3)
-  //         plate[j] = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rand() % 26]);
-  //       else
-  //         plate[j] = "0123456789"[(rand() % 10)];
-  //     }
-  //     plate[6] = '\0';
-  //     pthread_mutex_unlock(&rand_mutex); // unlock mutex for rand
-  //   }
+  pthread_mutex_unlock(&plates->mutex); // unlock plates mutex
   return plate;
 }
 
 void wait_at_gate(struct Boomgate *gate) {
-  // wait for exit gate to be raising
+  // wait for exit gate to be open
   pthread_mutex_lock(&gate->mutex);
-  while (gate->status != 'R' && gate->status != 'O') {
+  while (gate->status != 'O') {
     pthread_cond_wait(&gate->condition, &gate->mutex);
   }
-
-  // if the gate has been opened by another thread, just drive through at the
-  // same time causing a horrible collision
-  if (gate->status == 'O') {
-    pthread_mutex_unlock(&gate->mutex);
-    return;
-  }
-  // gate is 'R' -> wait 10ms for gate to open
-  rand_delay_ms(10, 10, &rand_mutex);
-  // open the gate
-  gate->status = 'O';
-  pthread_cond_broadcast(&gate->condition);
   pthread_mutex_unlock(&gate->mutex);
 }
 
@@ -161,7 +162,7 @@ void send_licence_plate(char *plate, struct LPR *lpr) {
   }
   // write the car's plate to the level lpr
   memccpy(lpr->plate, plate, 0, 6);
-  // broadcast to all threads waiting on the level lpr and unlock mutex
+  // broadcast to threads waiting on the level lpr and unlock mutex
   pthread_cond_broadcast(&lpr->condition);
   pthread_mutex_unlock(&lpr->mutex);
 }
@@ -175,21 +176,26 @@ int attempt_entry(ct_data *car_data) {
       &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
   int level_id;
+  // wait 2ms for sign to update
+  rand_delay_ms(2, 2, &rand_mutex);
   // wait on the entrance sign
   pthread_mutex_lock(&entrance->sign.mutex);
-  pthread_cond_wait(&entrance->sign.condition, &entrance->sign.mutex);
+  while (entrance->sign.display == '\0') {
+    pthread_cond_wait(&entrance->sign.condition, &entrance->sign.mutex);
+  }
   char display = entrance->sign.display;
   pthread_mutex_unlock(&entrance->sign.mutex);
 
-  if (display > '0' && display < '9') { // level number
-    level_id = display - '1';           // convert to level index
+  if (display > '0' && display <= '9') { // level number
+    level_id = display - '1';            // convert to level index
     // wait at gate if given a level
     wait_at_gate(&entrance->gate);
   } else { // Full or Not allowed Or Evacuating
     level_id = -1;
   }
   // remove self from queue
-  // safe to do this because we know the car is at the front of the queue
+  // safe to do this because we know the car is at the front of the queue,
+  // and has been assigned a level
   queue_pop(car_data->entry_queue);
   return level_id;
 }
@@ -214,24 +220,16 @@ void exit_car(ct_data *car_data, int level_id) {
   int exit = rand() % NUM_EXITS;
   pthread_mutex_unlock(&rand_mutex);
   // trigger exit lpr
-  pthread_mutex_lock(&car_data->shm->exits[exit].lpr.mutex);
-  // wait for exit lpr to be free (cleared by manager)
-  while (car_data->shm->exits[exit].lpr.plate[0] != '\0') {
-    pthread_cond_wait(&car_data->shm->exits[exit].lpr.condition,
-                      &car_data->shm->exits[exit].lpr.mutex);
-  }
-  // write the car's plate to the exit lpr
-  memccpy(car_data->shm->exits[exit].lpr.plate, car_data->plate, 0, 6);
-  // broadcast to any threads waiting on the exit lpr and unlock mutex
-  pthread_cond_broadcast(&car_data->shm->exits[exit].lpr.condition);
-  pthread_mutex_unlock(&car_data->shm->exits[exit].lpr.mutex);
+  send_licence_plate(car_data->plate, &car_data->shm->exits[exit].lpr);
   // wait for gate to open
   wait_at_gate(&car_data->shm->exits[exit].gate);
   // we are all done
   return;
 }
 
-// car given a number plate and an entrance queue
+// Car_handler is given the queue of cars, and takes one when available
+// - deals with the entire lifespan of the car in the carpark
+// - waits for another car in the queue
 void *car_handler(void *arg) {
   Queue *car_queue = (Queue *)arg;
   while (run) {
@@ -243,7 +241,7 @@ void *car_handler(void *arg) {
       car_item = unsafe_queue_pop_return(car_queue);
     }
     pthread_mutex_unlock(&car_queue->mutex);
-    if (!run || car_item == NULL) {
+    if (!run) {
       break;
     }
     // we got a car
@@ -251,7 +249,8 @@ void *car_handler(void *arg) {
     used_threads++;
     pthread_mutex_unlock(&used_threads_mutex);
     ct_data *data = (ct_data *)car_item->value;
-    // add self to entrance queue (size 7 as 6 characters on the plate + null)
+    // add self to entrance queue (size 7 as 6 characters on the plate + pad
+    // with null)
     queue_push(data->entry_queue, data->plate, 7);
     // wait until front of queue
     // while not at front of queue
@@ -261,8 +260,15 @@ void *car_handler(void *arg) {
                         &data->entry_queue->mutex);
     }
     pthread_mutex_unlock(&data->entry_queue->mutex);
-    // self is at front of entry queue
+
+    // Assigned level, or -1 if not allowed
     int level_id = attempt_entry(data);
+
+    // +++ Not Touching Shared Memory +++
+    if (level_id >= NUM_LEVELS) {
+      perror("Error: level_id is greater than or equal to NUM_LEVELS\n");
+      exit(EXIT_FAILURE);
+    }
     // if level_id is -1 then the car is not allowed in
     if (level_id == -1) {
       pthread_mutex_lock(&used_threads_mutex);
@@ -279,8 +285,10 @@ void *car_handler(void *arg) {
       level_id = rand() % NUM_LEVELS;
     }
     pthread_mutex_unlock(&rand_mutex);
+    // +++ END not Touching Shared Memory +++
 
     // park the car on the given level
+
     park_car(data, level_id);
 
     // exit the carpark
@@ -288,11 +296,13 @@ void *car_handler(void *arg) {
 
     // add licence plate back in the available pool
     add_plate(plates, data->plate);
+    free(data);
+    free(car_item);
+
+    // update used threads
     pthread_mutex_lock(&used_threads_mutex);
     used_threads--;
     pthread_mutex_unlock(&used_threads_mutex);
-    free(data);
-    free(car_item);
   }
   return NULL;
 }
@@ -312,8 +322,6 @@ void *input_handler() {
   while (input != 'q') {
     input = getchar();
   }
-  // clear the screen
-  printf("\033[2J\033[1;1H");
   // reset terminal
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
   system("stty echo");
@@ -322,15 +330,36 @@ void *input_handler() {
   return NULL;
 }
 
-int main(int argc, char *argv[]) {
-  // allow passing in a seed for rand
-  // the seed '3141592' nicely queues the first two cars at entrances[1] for
-  // debugging
-  if (argc > 1) {
-    int c;
-    c = atoi(argv[1]);
-    srand(c);
+void *gate_handler(void *arg) {
+  struct Boomgate *gate = (struct Boomgate *)arg;
+  while (run || used_threads > 0) {
+    pthread_mutex_lock(&gate->mutex);
+    while (!(gate->status == 'R' || gate->status == 'L') &&
+           (used_threads > 0 || run)) {
+      pthread_cond_wait(&gate->condition, &gate->mutex);
+    }
+    if (used_threads == 0 && !run) {
+      pthread_mutex_unlock(&gate->mutex);
+      break;
+    }
+    // gate is now 'R' or 'L
+    if (gate->status == 'R') {
+      rand_delay_ms(10, 10, &rand_mutex); // raising takes 10ms
+      gate->status = 'O';
+      pthread_cond_broadcast(&gate->condition);
+    } else {
+      rand_delay_ms(10, 10, &rand_mutex); // closing takes 10ms
+      gate->status = 'C';
+      pthread_cond_broadcast(&gate->condition);
+    }
+    pthread_mutex_unlock(&gate->mutex);
   }
+  // stopped running and all car threads alive
+  return NULL;
+}
+
+int main(int argc, char *argv[]) {
+  srand(time(NULL));
   // initialise the shared memory
   struct SharedMemory *shm = create_shm(SHM_NAME);
 
@@ -357,22 +386,36 @@ int main(int argc, char *argv[]) {
   pthread_create(&input_thread, NULL, input_handler, &input);
 
   // handle the (limited) display for the simulator
-  SimDisplayData display_data;
-  display_data.num_cars = &used_threads;
-  display_data.entry_queues = entry_queues;
-  display_data.running = &run;
-  display_data.available_plates = &plates->count;
   pthread_t display_thread;
-  pthread_create(&display_thread, NULL, sim_display_handler, &display_data);
+  SimDisplayData display_data;
+  if (argc < 2 || strcmp(argv[1], "nodisp") != 0) {
+    printf("Starting Sim Display\n");
+    display_data.num_cars = &used_threads;
+    display_data.entry_queues = entry_queues;
+    display_data.running = &run;
+    display_data.available_plates = &plates->count;
+    pthread_create(&display_thread, NULL, sim_display_handler, &display_data);
+  }
 
   Queue *car_queue = queue_create(0);
 
+  // threads who's jobs are to just look at boomgates and open/close them
+  // depending on the manager
+  pthread_t gate_threads[NUM_ENTRANCES + NUM_EXITS];
+  for (int i = 0; i < NUM_ENTRANCES + NUM_EXITS; i++) {
+    if (i < NUM_ENTRANCES) {
+      struct Boomgate *gate = &shm->entrances[i].gate;
+      pthread_create(&gate_threads[i], NULL, gate_handler, gate);
+    } else {
+      struct Boomgate *gate = &shm->exits[i - NUM_ENTRANCES].gate;
+      pthread_create(&gate_threads[i], NULL, gate_handler, gate);
+    }
+  }
+
   pthread_t car_threads[CAR_THREADS];
   for (int i = 0; i < CAR_THREADS; i++) {
-    pthread_t thread;
     // create a car thread
-    pthread_create(&thread, NULL, car_handler, car_queue);
-    car_threads[i] = thread;
+    pthread_create(&car_threads[i], NULL, car_handler, car_queue);
   }
 
   while (run) {
@@ -380,20 +423,23 @@ int main(int argc, char *argv[]) {
     if (plate) {
       // create a car thread
       ct_data *data = calloc(1, sizeof(ct_data));
+      if (!data) {
+        perror("Calloc car data");
+        exit(EXIT_FAILURE);
+      }
       memccpy(data->plate, plate, 0, 7);
-      free(plate);
 
       pthread_mutex_lock(&rand_mutex);
       data->entry_queue = entry_queues[rand() % NUM_LEVELS];
       pthread_mutex_unlock(&rand_mutex);
 
-      data->rand_mutex = &rand_mutex;
       data->shm = shm;
       // add the car to the queue
       queue_push(car_queue, data, sizeof(ct_data));
       // free our copy of the car, queue_push makes a copy
       free(data);
     }
+    free(plate); // we don't need the plate anymore
     // wait between 1 and 100 ms
     rand_delay_ms(1, 100, &rand_mutex);
   }
@@ -401,19 +447,38 @@ int main(int argc, char *argv[]) {
   // broadcast to the car_queue to wake up all the threads
   // that might be waiting for a car to enter the queue
   // and let them know to exit
+  printf("Attempting To Join Car Threads\n");
   pthread_mutex_lock(&car_queue->mutex);
   pthread_cond_broadcast(&car_queue->condition);
   pthread_mutex_unlock(&car_queue->mutex);
+
   for (int i = 0; i < CAR_THREADS; i++) {
     int jres = pthread_join(car_threads[i], NULL);
     if (jres != 0) {
       perror("Error joining thread");
+      exit(EXIT_FAILURE);
     }
   }
-  printf("Threads in use after joining: %d\n", used_threads);
+  printf("\033[2J\033[1;1H");
+  printf("Car Threads Joined, Used Threads = %d\n", used_threads);
+  // signal to gate threads
+  // they will check that run is false and there are no more cars alive
+  for (int i = 0; i < NUM_ENTRANCES + NUM_EXITS; i++) {
+    if (i < NUM_ENTRANCES) {
+      pthread_mutex_lock(&shm->entrances[i].gate.mutex);
+      pthread_cond_broadcast(&shm->entrances[i].gate.condition);
+      pthread_mutex_unlock(&shm->entrances[i].gate.mutex);
+    } else {
+      pthread_mutex_lock(&shm->exits[i - NUM_ENTRANCES].gate.mutex);
+      pthread_cond_broadcast(&shm->exits[i - NUM_ENTRANCES].gate.condition);
+      pthread_mutex_unlock(&shm->exits[i - NUM_ENTRANCES].gate.mutex);
+    }
+  }
 
   pthread_join(input_thread, NULL);
-  // pthread_join(display_thread, NULL);
+  printf("Input Thread Joined\n");
+  pthread_join(display_thread, NULL);
+  printf("Display Thread Joined\n");
 
   // destroy the plates
   Plate *plate = plates->head;
@@ -423,16 +488,33 @@ int main(int argc, char *argv[]) {
     plate = next;
   }
   free(plates);
+  printf("Plates Destroyed\n");
+
+  // join gate threads
+  for (int i = 0; i < (NUM_ENTRANCES + NUM_EXITS); i++) {
+    int jres = pthread_join(gate_threads[i], NULL);
+    if (jres != 0) {
+      perror("Error joining thread");
+      exit(EXIT_FAILURE);
+    }
+  }
+  printf("Gate Threads Joined\n");
 
   // destroy mutexes
   pthread_mutex_destroy(&rand_mutex);
+  pthread_mutex_destroy(&plate_mutex);
+  pthread_mutex_destroy(&used_threads_mutex);
   // destroy the queues
   for (int i = 0; i < NUM_ENTRANCES; i++) {
     destroy_queue(entry_queues[i]);
   }
   destroy_queue(car_queue);
+  printf("Entry Queue Destroyed\n");
+
   // destroy the shared memory after use
-  destroy_shm(shm);
+  // can't actually have this as manager may still be using it so it locks up
+  // destroy_shm(shm);
+  // printf("Shared Memory Destroyed, exiting...\n");
 
   return 0;
 }

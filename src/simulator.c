@@ -23,6 +23,7 @@ int run = 1;
 int used_threads = 0;
 pthread_mutex_t used_threads_mutex;
 pthread_mutex_t rand_mutex;
+struct SharedMemory *shm;
 
 pthread_mutex_t plate_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Node in a linked list of number plates
@@ -303,6 +304,49 @@ void *car_handler(void *arg) {
     pthread_mutex_lock(&used_threads_mutex);
     used_threads--;
     pthread_mutex_unlock(&used_threads_mutex);
+
+
+  }
+  return NULL;
+}
+
+int randTemp = 0;
+int n = 0;
+
+//Generate a fire every 5 seconds that lasts for 3 seconds.
+void *temp_sim(){
+  int regular_cycles = 1;
+  while(1){
+    int fire_interval = 2500;
+    if ((regular_cycles % fire_interval) == 0)
+    {
+      int fire_cycles = 1;
+      while (fire_cycles < 1500)
+      {
+        for (int i = 0; i < NUM_LEVELS; i++) {
+          pthread_mutex_lock(&rand_mutex);
+          //rand() % (max_number + 1 - minimum_number) + minimum_number
+          randTemp = rand() % (80 + 1 - 58) + 58;
+          pthread_mutex_unlock(&rand_mutex);
+          shm->levels[i].temp = randTemp;
+        }
+        fire_cycles += 1;
+        usleep (2000);
+      }
+      regular_cycles += 1;
+    }
+    else
+    {
+      for (int i = 0; i < NUM_LEVELS; i++) {
+        pthread_mutex_lock(&rand_mutex);
+        //rand() % (max_number + 1 - minimum_number) + minimum_number
+        randTemp = rand() % (57 + 1 - 0) + 0;
+        pthread_mutex_unlock(&rand_mutex);
+        shm->levels[i].temp = randTemp;
+      }
+      regular_cycles += 1;
+      usleep (2000);
+    }
   }
   return NULL;
 }
@@ -361,7 +405,7 @@ void *gate_handler(void *arg) {
 int main(int argc, char *argv[]) {
   srand(time(NULL));
   // initialise the shared memory
-  struct SharedMemory *shm = create_shm(SHM_NAME);
+  shm = create_shm(SHM_NAME);
 
   // protect rand with a mutex
   pthread_mutex_init(&rand_mutex, NULL);
@@ -417,6 +461,10 @@ int main(int argc, char *argv[]) {
     // create a car thread
     pthread_create(&car_threads[i], NULL, car_handler, car_queue);
   }
+
+  //start temperature simulation
+  pthread_t temperature;
+  pthread_create(&temperature, NULL, temp_sim, &randTemp);
 
   while (run) {
     char *plate = random_available_plate(plates);
@@ -479,6 +527,8 @@ int main(int argc, char *argv[]) {
   printf("Input Thread Joined\n");
   pthread_join(display_thread, NULL);
   printf("Display Thread Joined\n");
+  pthread_join(temperature, NULL);
+  printf("Temperature Thread Joined\n");
 
   // destroy the plates
   Plate *plate = plates->head;

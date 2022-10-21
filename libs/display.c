@@ -89,11 +89,11 @@ void *man_display_handler(void *arg) {
       pthread_mutex_unlock(&shm->levels[i].lpr.mutex);
 
       ANSI_CTRL_POS(hrow + 2, col);
-      char temp = shm->levels[i].temp;
-      printf("  %c   |\n", temp ? temp : ' ');
+      int temp = shm->levels[i].temp;
+      printf("  %d   |\n", temp ? temp : ' ');
       ANSI_CTRL_POS(hrow + 3, col);
-      char alarm = shm->levels[i].alarm;
-      printf("  %c   |\n", alarm ? alarm : ' ');
+      int alarm = shm->levels[i].alarm;
+      printf("  %d   |\n", alarm ? alarm : ' ');
       ANSI_CTRL_POS(hrow + 4, col);
       // NOTE: assumes capacity is a two digit number for formatting, don't
       // think we really need to fix this

@@ -124,84 +124,62 @@ void *temp_monitor(void *arg) {
 	return NULL;
 }
 
-// void *openboomgate(void *arg)
-// {
-// 	struct boomgate *bg = arg;
-// 	pthread_mutex_lock(&bg->m);
-// 	for (;;) {
-// 		if (bg->s == 'C') {
-// 			bg->s = 'R';
-// 			pthread_cond_broadcast(&bg->c);
-// 		}
-// 		if (bg->s == 'O') {
-// 		}
-// 		pthread_cond_wait(&bg->c, &bg->m);
-// 	}
-// 	pthread_mutex_unlock(&bg->m);
-	
-// }
+
+// opens all entrance and exit boomgates
+void openboomgate(int level) {
+	pthread_mutex_lock(&shm->entrances[level].gate.mutex);
+	shm->entrances[level].gate.status = 'O'; // set entrance gates to open
+	pthread_mutex_unlock(&shm->entrances[level].gate.mutex);
+	pthread_mutex_lock(&shm->exits[level].gate.mutex);
+	shm->exits[level].gate.status = 'O'; // set exit gates to open
+	pthread_mutex_unlock(&shm->exits[level].gate.mutex);
+}
 
 
 int main()
 {
 	printf("Firealarm System Running\n");
 	fflush(stdout);
-
-	// get the shared memory object
-  	shm = get_shm(SHM_NAME);
-
-	pthread_t *threads = malloc(sizeof(pthread_t) * NUM_LEVELS);
-
+  	shm = get_shm(SHM_NAME); // get the shared memory object
+	
+	pthread_t level_threads[NUM_LEVELS];
+	// create temperature monitoring threads
 	for (size_t i = 0; i < NUM_LEVELS; i++) {
-		pthread_create(threads + i, NULL, temp_monitor, (void *)i);
+		pthread_create(&level_threads[i], NULL, temp_monitor, (void *)i);
 	}
-	for (;;) {
-		//temp_sim();
+
+	while(1) {
 		if (alarm_active) {
-			goto emergency_mode;
+				fprintf(stderr, "*** ALARM ACTIVE ***\n");
+
+				// Handle the alarm system and open boom gates
+				// Activate alarms on all levels
+				for (int i = 0; i < NUM_LEVELS; i++) {
+					shm->levels[i].alarm = 1; // set shm alarm to true
+					openboomgate(i); // open up all boom gates
+				}
+
+				// Show evacuation message on an endless loop
+				for (;;) {
+					char *evacmessage = "EVACUATE ";
+					for (char *p = evacmessage; *p != '\0'; p++) {
+						for (int i = 0; i < NUM_ENTRANCES; i++) {
+							pthread_mutex_lock(&shm->entrances[i].sign.mutex);
+							shm->entrances[i].sign.display = *p;
+							pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
+						}
+						usleep(20000);
+					}
+				}
+			}
+	}
+
+	
+	for (int i = 0; i < NUM_LEVELS; i++) {
+		int jres = pthread_join(level_threads[i], NULL);
+		if (jres != 0) {
+			perror("Error joining thread");
+			exit(EXIT_FAILURE);
 		}
-		usleep(2000); // sleep for 2ms
-	}
-	
-	emergency_mode:
-	fprintf(stderr, "*** ALARM ACTIVE ***\n");
-	
-	// Handle the alarm system and open boom gates
-	// Activate alarms on all levels
-	for (int i = 0; i < NUM_LEVELS; i++) {
-		shm->levels[i].alarm = 1; // set shm alarm to true
-	}
-	
-	// Open up all boom gates
-	// pthread_t *boomgatethreads = malloc(sizeof(pthread_t) * (NUM_ENTRANCES + NUM_EXITS));
-	// for (int i = 0; i < NUM_ENTRANCES; i++) {
-	// 	int addr = 288 * i + 96;
-	// 	volatile struct boomgate *bg = shm + addr;
-	// 	pthread_create(boomgatethreads + i, NULL, openboomgate, bg);
-	// }
-	// for (int i = 0; i < NUM_EXITS; i++) {
-	// 	int addr = 192 * i + 1536;
-	// 	volatile struct boomgate *bg = shm + addr;
-	// 	pthread_create(boomgatethreads + NUM_ENTRANCES + i, NULL, openboomgate, bg);
-	// }
-	
-	// // Show evacuation message on an endless loop
-	// for (;;) {
-	// 	char *evacmessage = "EVACUATE ";
-	// 	for (char *p = evacmessage; *p != '\0'; p++) {
-	// 		for (int i = 0; i < NUM_ENTRANCES; i++) {
-	// 			int addr = 288 * i + 192;
-	// 			volatile struct parkingsign *sign = shm + addr;
-	// 			pthread_mutex_lock(&sign->m);
-	// 			sign->display = *p;
-	// 			pthread_cond_broadcast(&sign->c);
-	// 			pthread_mutex_unlock(&sign->m);
-	// 		}
-	// 		usleep(20000);
-	// 	}
-	// }
-	
-	for (int i = 0; i < NUM_LEVELS; i++) {
-		pthread_join(threads[i], NULL);
 	}
 }

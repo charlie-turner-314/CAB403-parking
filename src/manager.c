@@ -205,6 +205,8 @@ void *entry_handler(void *arg) {
   int id = args->id;
   struct Entrance *entrance = &shm->entrances[id]; // The corresponding entrance
   while (true) {
+    // check that the we aren't evacuating
+
     // wait for a car to arrive at the LPR
     wait_for_lpr(&entrance->lpr);
     // should be a licence plate there now, so read it

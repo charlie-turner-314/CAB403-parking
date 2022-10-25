@@ -478,7 +478,7 @@ int main(int argc, char *argv[]) {
       memccpy(data->plate, plate, 0, 7);
 
       pthread_mutex_lock(&rand_mutex);
-      data->entry_queue = entry_queues[rand() % NUM_LEVELS];
+      data->entry_queue = entry_queues[rand() % NUM_ENTRANCES];
       pthread_mutex_unlock(&rand_mutex);
 
       data->shm = shm;

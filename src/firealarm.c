@@ -96,9 +96,9 @@ void *temp_monitor(void *arg) {
       // Temperatures of 58 degrees and higher are a concern
       if (smoothed_temps[level][i] >= 58) {
         hightemps++;
-      }
-      // check if array is valid i.e full with temp readings
-      else if (smoothed_temps[level][i] == INT_MIN) {
+      } else if (smoothed_temps[level][i] ==
+                 INT_MIN) // check if array is valid i.e full with temp readings
+      {
         emptyReadings++;
       }
     }
@@ -106,6 +106,8 @@ void *temp_monitor(void *arg) {
     // this is considered a high temperature. Raise the alarm
     if ((hightemps >= 30 * 0.9) && emptyReadings == 0) {
       alarm_active = 1;
+    } else {
+      alarm_active = 0;
     }
 
     // rate of rise fire detection
@@ -115,6 +117,8 @@ void *temp_monitor(void *arg) {
     if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) &&
         (emptyReadings == 0)) {
       alarm_active = 1;
+    } else {
+      alarm_active = 0;
     }
     // sleep for 2 ms
     usleep(2000);
@@ -144,7 +148,8 @@ int main() {
   }
 
   while (1) {
-    if (alarm_active) {
+
+    if (alarm_active == 1) {
       fprintf(stderr, "*** ALARM ACTIVE ***\n");
 
       // Handle the alarm system and open boom gates
@@ -155,16 +160,20 @@ int main() {
       }
 
       // Show evacuation message on an endless loop
-      for (;;) {
-        char *evacmessage = "EVACUATE ";
-        for (char *p = evacmessage; *p != '\0'; p++) {
-          for (int i = 0; i < NUM_ENTRANCES; i++) {
-            pthread_mutex_lock(&shm->entrances[i].sign.mutex);
-            shm->entrances[i].sign.display = *p;
-            pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
-          }
-          usleep(20000);
+      char *evacmessage = "EVACUATE ";
+      for (char *p = evacmessage; *p != '\0'; p++) {
+        for (int i = 0; i < NUM_ENTRANCES; i++) {
+          pthread_mutex_lock(&shm->entrances[i].sign.mutex);
+          shm->entrances[i].sign.display = *p;
+          pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
         }
+        usleep(20000); // update sign with new letter every 20ms
+      }
+    } else {
+      // Deactivate alarms on all levels
+      for (int i = 0; i < NUM_LEVELS; i++) {
+        shm->levels[i].alarm = 0; // set shm alarm to false
+        openboomgate(i);          // open up all boom gates
       }
     }
   }

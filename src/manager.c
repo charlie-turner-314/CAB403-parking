@@ -59,6 +59,9 @@ ht_t *capacity_ht;              // hashtable of levels and their capacity
 // hashtable for storing billing information for cars
 ht_t *billing_ht;
 int total_bill = 0;
+struct timezone;
+struct timeval;
+int gettimeofday ( struct timeval *tp ,  struct timezone *tz );
 
 struct SharedMemory *shm; // shared memory
 
@@ -273,14 +276,17 @@ void *entry_handler(void *arg) {
       // wait 20ms and then tell sim to close the gate if the alarm is not
       if (!alarm_is_active()) {
         // Add car to billing table
+        // Null terminate plate
         char array[7];
         memccpy(array, plate, 0, 6);
         array[6] = '\0';
+
         //get current time in milliseconds
         struct timeval tv;
         gettimeofday(&tv, NULL);
         long long millisecondsTime = (long long)(tv.tv_sec) * 1000 + (long long)(tv.tv_usec) / 1000; // convert tv_sec & tv_usec to// milliseconds
 
+        //add to hashtable
         htab_set(billing_ht, array, (int)millisecondsTime);
         delay_ms(20);
         pthread_mutex_lock(&entrance->gate.mutex);
@@ -378,12 +384,12 @@ void *exit_handler(void *arg) {
     exitplate[6] = '\0';
     int entry_time = htab_get(billing_ht, exitplate);
     int time_in_carpark = (int)time(NULL) * 1000 - entry_time;
-    int bill = time_in_carpark * 0.05;
+    float bill = time_in_carpark * 0.05;
     FILE *billing_file = fopen("billing.txt","a");
-    fprintf(billing_file, "%s: $%d \n", exitplate, bill);
+    fprintf(billing_file, "%s: $%.2f \n", exitplate, bill);
     fclose(billing_file);
     total_bill+= bill;
-    
+
     // car left, unassign them from the carpark. Has to be in critical section
     // to prevent sim reusing plate instantly and then manager thinking they are
     // still in the carpark

@@ -276,7 +276,12 @@ void *entry_handler(void *arg) {
         char array[7];
         memccpy(array, plate, 0, 6);
         array[6] = '\0';
-        htab_set(billing_ht, array, (int)time(NULL) * 1000);
+        //get current time in milliseconds
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        long long millisecondsTime = (long long)(tv.tv_sec) * 1000 + (long long)(tv.tv_usec) / 1000; // convert tv_sec & tv_usec to// milliseconds
+
+        htab_set(billing_ht, array, (int)millisecondsTime);
         delay_ms(20);
         pthread_mutex_lock(&entrance->gate.mutex);
         entrance->gate.status = 'L';

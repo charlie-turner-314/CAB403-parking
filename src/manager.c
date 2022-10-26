@@ -55,8 +55,10 @@ ht_t *cars_ht; // hashtable of vehicles and their current and assigned level
 
 pthread_mutex_t capacity_mutex; // mutex for capacity of each level
 ht_t *capacity_ht;              // hashtable of levels and their capacity
+
 // hashtable for storing billing information for cars
 ht_t *billing_ht;
+int total_bill = 0;
 
 struct SharedMemory *shm; // shared memory
 
@@ -364,16 +366,19 @@ void *exit_handler(void *arg) {
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
     exit->gate.status = 'R';
+
     // Calculate billing
     char exitplate[7];
     memccpy(exitplate, plate, 0, 6);
     exitplate[6] = '\0';
-    //int entry_time = htab_get(billing_ht, exitplate);
-    //int time_in_carpark = (int)time(NULL) * 1000 - entry_time;
-    //int bill = time_in_carpark * 0.05;
+    int entry_time = htab_get(billing_ht, exitplate);
+    int time_in_carpark = (int)time(NULL) * 1000 - entry_time;
+    int bill = time_in_carpark * 0.05;
     FILE *billing_file = fopen("billing.txt","a");
-    fprintf(billing_file, "Some Car, there bill is");
-
+    fprintf(billing_file, "%s: $%d \n", exitplate, bill);
+    fclose(billing_file);
+    total_bill+= bill;
+    
     // car left, unassign them from the carpark. Has to be in critical section
     // to prevent sim reusing plate instantly and then manager thinking they are
     // still in the carpark

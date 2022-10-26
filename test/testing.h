@@ -1,8 +1,9 @@
+#pragma once
 /*
 Libs used in pretty much all tests
 */
+#include <locale.h>
 #include <stdio.h>
-#include <wchar.h>
 #include <stdlib.h>
 #include <string.h>
-#include <locale.h>
+#include <wchar.h>

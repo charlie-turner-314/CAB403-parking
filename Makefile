@@ -25,7 +25,7 @@ CC = gcc
 CFLAGS = -g -Wall -Wextra -Werror $(INC_FLAGS) 
 
 # ---------------- NEED THESE ON LINUX I THINK --------------------------
-#LDFLAGS = -lrt -lpthread -lm
+LDFLAGS = -lrt -lpthread -lm
 
 all: main test
 

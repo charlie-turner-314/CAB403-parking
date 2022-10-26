@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 // Assumption
 // - Maximum 9 levels -> as each display is only 1 char
@@ -61,6 +62,7 @@ pthread_mutex_t capacity_mutex;
 // could try to reduce the cars hashtable but this seems easier
 // - indexed starting at zero
 ht_t *capacity_ht;
+ht_t *billing_ht;
 
 struct SharedMemory *shm;
 
@@ -258,6 +260,13 @@ void *entry_handler(void *arg) {
       pthread_cond_broadcast(&entrance->gate.condition);
       pthread_mutex_unlock(&entrance->gate.mutex);
 
+
+      // Add car to billing table
+      char array[7];
+      memccpy(array, plate, 0, 6);
+      array[6] = '\0';
+      htab_set(billing_ht, array, (int)time(NULL) * 1000);
+
       // wait 20ms and then tell sim to close the gate
       rand_delay_ms(20, 20, &rand_mutex);
       pthread_mutex_lock(&entrance->gate.mutex);
@@ -340,6 +349,12 @@ void *exit_handler(void *arg) {
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
     exit->gate.status = 'R';
+    //Calculate billing
+    char exitplate[7];
+    memccpy(exitplate, plate, 0, 6);
+    exitplate[6] = '\0';
+    htab_get(billing_ht, exitplate);
+
     // car left, unassign them from the carpark. Has to be in critical section
     // to prevent sim reusing plate instantly and then manager thinking they are
     // still in the carpark
@@ -374,6 +389,9 @@ int main(int argc, char *argv[]) {
     char level[2] = {INT_TO_CHAR(i), '\0'};
     htab_set(capacity_ht, level, 0);
   }
+
+  // initialise billing hashtable
+  billing_ht = htab_create(billing_ht, 5);
 
   // create entrance threads
   // -------------------------------

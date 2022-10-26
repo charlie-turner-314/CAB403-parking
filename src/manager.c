@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 // Assumption
@@ -54,6 +55,8 @@ ht_t *cars_ht; // hashtable of vehicles and their current and assigned level
 
 pthread_mutex_t capacity_mutex; // mutex for capacity of each level
 ht_t *capacity_ht;              // hashtable of levels and their capacity
+// hashtable for storing billing information for cars
+ht_t *billing_ht;
 
 struct SharedMemory *shm; // shared memory
 
@@ -212,9 +215,9 @@ void *entry_handler(void *arg) {
     // wait for a car to arrive at the LPR
     wait_for_lpr(&entrance->lpr);
     char level = '\0';
+    // should be a licence plate there now, so read it
+    char *plate = entrance->lpr.plate;
     if (!alarm_is_active()) {
-      // should be a licence plate there now, so read it
-      char *plate = entrance->lpr.plate;
       // check if the car is in the hashtable (and not already in the car park)
       int value = ts_get_number_plate(plate);
 
@@ -267,6 +270,11 @@ void *entry_handler(void *arg) {
 
       // wait 20ms and then tell sim to close the gate if the alarm is not
       if (!alarm_is_active()) {
+        // Add car to billing table
+        char array[7];
+        memccpy(array, plate, 0, 6);
+        array[6] = '\0';
+        htab_set(billing_ht, array, (int)time(NULL) * 1000);
         delay_ms(20);
         pthread_mutex_lock(&entrance->gate.mutex);
         entrance->gate.status = 'L';
@@ -356,6 +364,17 @@ void *exit_handler(void *arg) {
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
     exit->gate.status = 'R';
+    // Calculate billing
+    char exitplate[7];
+    memccpy(exitplate, plate, 0, 6);
+    exitplate[6] = '\0';
+    htab_get(billing_ht, exitplate);
+
+    // car left, unassign them from the carpark. Has to be in critical section
+    // to prevent sim reusing plate instantly and then manager thinking they are
+    // still in the carpark
+    ts_set_assigned_level(plate, NO_LEVEL);
+    ts_set_current_level(plate, NO_LEVEL);
     pthread_cond_broadcast(&exit->gate.condition);
     pthread_mutex_unlock(&exit->gate.mutex);
     // car left, unassign them from the carpark.
@@ -426,6 +445,9 @@ int main(int argc, char *argv[]) {
     char level[2] = {INT_TO_CHAR(i), '\0'};
     htab_set(capacity_ht, level, 0);
   }
+
+  // initialise billing hashtable
+  billing_ht = htab_create(billing_ht, 5);
 
   // create entrance threads
   // -------------------------------

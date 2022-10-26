@@ -368,7 +368,11 @@ void *exit_handler(void *arg) {
     char exitplate[7];
     memccpy(exitplate, plate, 0, 6);
     exitplate[6] = '\0';
-    htab_get(billing_ht, exitplate);
+    //int entry_time = htab_get(billing_ht, exitplate);
+    //int time_in_carpark = (int)time(NULL) * 1000 - entry_time;
+    //int bill = time_in_carpark * 0.05;
+    FILE *billing_file = fopen("billing.txt","a");
+    fprintf(billing_file, "Some Car, there bill is");
 
     // car left, unassign them from the carpark. Has to be in critical section
     // to prevent sim reusing plate instantly and then manager thinking they are

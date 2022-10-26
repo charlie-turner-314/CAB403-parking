@@ -195,23 +195,41 @@ void *car_handler(void *arg) {
 // Generate a fire every 5 seconds that lasts for 3 seconds.
 void *temp_sim(void *arg) {
   struct SharedMemory *shm = (struct SharedMemory *)arg;
-  int randTemp = 0;
-  int regular_cycles = 1;
+  int randTemp = 0;         // a random temperature to put in the shared memory
+  int regular_cycles = 1;   // number of cycles since last fire
+  int fire_interval = 2500; // how often to generate a fire
+  int fire_duration = 1500; // duration to keep a fire on before turning it off
+  int fire_type = 0;        // 0 for fixed temperature, 1 for ror
   while (run) {
-    int fire_interval = 2500; // 5 seconds
     if ((regular_cycles % fire_interval) == 0) {
-      int fire_cycles = 1;
-      while (fire_cycles < 1500) {
-        for (int i = 0; i < NUM_LEVELS; i++) {
-          pthread_mutex_lock(&rand_mutex);
-          // rand() % (max_number + 1 - minimum_number) + minimum_number
-          randTemp = rand() % (80 + 1 - 58) + 58;
-          pthread_mutex_unlock(&rand_mutex);
-          shm->levels[i].temp = randTemp;
+      int fire_cycles = 0;
+      if (fire_type == 0) {
+        while (fire_cycles < fire_duration) {
+          for (int i = 0; i < NUM_LEVELS; i++) {
+            pthread_mutex_lock(&rand_mutex);
+            // rand() % (max_number + 1 - minimum_number) + minimum_number
+            randTemp = rand() % (80 + 1 - 58) + 58;
+            pthread_mutex_unlock(&rand_mutex);
+            shm->levels[i].temp = randTemp;
+          }
+          fire_cycles += 1;
+          delay_ms(2);
         }
-        fire_cycles += 1;
-        delay_ms(2);
+      } else {
+        // create a rate of rise fire, adding between -1 and 5 degrees every 2ms
+        // which will almost certainly cause ror to be triggered after
+        while (fire_cycles < fire_duration) {
+          for (int i = 0; i < NUM_LEVELS; i++) {
+            pthread_mutex_lock(&rand_mutex);
+            randTemp = rand() % (7) - 1;
+            pthread_mutex_unlock(&rand_mutex);
+            shm->levels[i].temp += randTemp;
+          }
+          fire_cycles += 1;
+          delay_ms(2);
+        }
       }
+      fire_type = !fire_type; // change fire type for next time
       regular_cycles += 1;
     } else {
       for (int i = 0; i < NUM_LEVELS; i++) {
@@ -259,17 +277,19 @@ void *gate_handler(void *arg) {
            (used_threads > 0 || run)) {
       pthread_cond_wait(&gate->condition, &gate->mutex);
     }
+    pthread_mutex_unlock(&gate->mutex);
     if (used_threads == 0 && !run) {
-      pthread_mutex_unlock(&gate->mutex);
       break;
     }
     // gate is now 'R' or 'L
     if (gate->status == 'R') {
       delay_ms(10); // raising takes 10ms
+      pthread_mutex_lock(&gate->mutex);
       gate->status = 'O';
       pthread_cond_broadcast(&gate->condition);
-    } else {
+    } else if (gate->status == 'L') {
       delay_ms(10); // closing takes 10ms
+      pthread_mutex_lock(&gate->mutex);
       gate->status = 'C';
       pthread_cond_broadcast(&gate->condition);
     }

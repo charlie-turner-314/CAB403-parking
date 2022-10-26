@@ -1,6 +1,5 @@
 // A thread-safe queue implementation.
 #include "queue.h"
-#include "simulator.h"
 #include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -122,44 +121,4 @@ bool destroy_queue(Queue *q) {
   }
   free(q);
   return 1;
-}
-
-// print entrance item
-static void entrance_item_print(char *plate) { printf("'%6s' ", plate); }
-
-// print entrance queue
-void entry_queue_print(Queue *q) {
-
-  pthread_mutex_lock(&q->mutex);
-  QItem *node = q->head;
-
-  if (!node)
-    printf("empty");
-
-  while (node) {
-    entrance_item_print(node->value);
-    node = node->next;
-  }
-  pthread_mutex_unlock(&q->mutex);
-}
-
-// print car item
-static void car_item_print(ct_data *car_data) {
-  printf("'%6s' ", car_data->plate);
-}
-
-// print car object queue
-void car_queue_print(Queue *q) {
-
-  pthread_mutex_lock(&q->mutex);
-  QItem *node = q->head;
-
-  if (!node)
-    printf("empty");
-
-  while (node) {
-    car_item_print(node->value);
-    node = node->next;
-  }
-  pthread_mutex_unlock(&q->mutex);
 }

@@ -41,8 +41,3 @@ QItem *unsafe_queue_pop_return(Queue *q);
 
 // Destroy a queue, freeing memory for remaining items.
 bool destroy_queue(Queue *q);
-
-// print functions
-void entry_queue_print(Queue *q);
-
-void car_queue_print(Queue *q);

@@ -28,9 +28,6 @@ void *man_display_handler(void *arg);
 //
 // not necessary for the spec, but useful for debugging
 // ------------------------------------------------------
-// - Updates only when necessary by waiting for condition variable:
-// - Waits for the condition variable to be signalled (by simulator)
-// - Prints the current state of the simulator
-// - Repeats
+// - Displays the entry queues
 // *arg is a pointer to a `SimDisplayData` struct
 void *sim_display_handler(void *arg);

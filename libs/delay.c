@@ -13,3 +13,5 @@ void rand_delay_ms(int min, int max, pthread_mutex_t *mutex) {
   pthread_mutex_unlock(mutex);
   usleep((delay * 1000) * TIME_FACTOR);
 }
+
+void delay_ms(int delay) { usleep((delay * 1000) * TIME_FACTOR); }

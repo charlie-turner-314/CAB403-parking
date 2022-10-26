@@ -36,10 +36,17 @@ struct SharedMemory *create_shm(char *name) {
   // Pthread attributes to share between processes
   pthread_mutexattr_t attr;
   pthread_mutexattr_init(&attr);
-  pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+  int mut_attr_ret =
+      pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
   pthread_condattr_t cond_attr;
   pthread_condattr_init(&cond_attr);
-  pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
+  int cond_attr_ret =
+      pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
+
+  if (mut_attr_ret != 0 || cond_attr_ret != 0) {
+    perror("pthread_mutexattr_setpshared");
+    exit(1);
+  }
 
   // initialise mutexes and condition variables for the entrances
   for (int entrance = 0; entrance < NUM_ENTRANCES; entrance++) {

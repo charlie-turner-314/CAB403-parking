@@ -1,6 +1,8 @@
 #include "display.h"
 #include "config.h"
+#include "queue.h"
 #include "shm_parking.h"
+#include "simulator.h"
 #include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -22,6 +24,10 @@
 #define ANSI_CTRL_LEFT(n) "\x1B[" #n "D"
 // ANSI_CTRL_POS moves the cursor to the specified position
 #define ANSI_CTRL_POS(row, col) printf("\x1B[%d;%dH", row, col)
+
+// function prototypes
+void car_item_print(ct_data *car_data);
+void entry_queue_print(Queue *q);
 
 // used by manager
 void *man_display_handler(void *arg) {
@@ -84,7 +90,7 @@ void *man_display_handler(void *arg) {
 
       ANSI_CTRL_POS(hrow + 1, col);
       pthread_mutex_lock(&shm->levels[i].lpr.mutex);
-      char *plate = shm->entrances[i].lpr.plate;
+      char *plate = shm->levels[i].lpr.plate;
       printf("%.6s|\n", plate[0] ? plate : "      ");
       pthread_mutex_unlock(&shm->levels[i].lpr.mutex);
 
@@ -172,4 +178,42 @@ void *sim_display_handler(void *arg) {
     usleep(50000);
   }
   return NULL;
+}
+
+// print entrance item
+static void entrance_item_print(char *plate) { printf("'%6s' ", plate); }
+
+// print entrance queue
+void entry_queue_print(Queue *q) {
+
+  pthread_mutex_lock(&q->mutex);
+  QItem *node = q->head;
+
+  if (!node)
+    printf("empty");
+
+  while (node) {
+    entrance_item_print(node->value);
+    node = node->next;
+  }
+  pthread_mutex_unlock(&q->mutex);
+}
+
+// print car item
+void car_item_print(ct_data *car_data) { printf("'%6s' ", car_data->plate); }
+
+// print car object queue
+void car_queue_print(Queue *q) {
+
+  pthread_mutex_lock(&q->mutex);
+  QItem *node = q->head;
+
+  if (!node)
+    printf("empty");
+
+  while (node) {
+    car_item_print(node->value);
+    node = node->next;
+  }
+  pthread_mutex_unlock(&q->mutex);
 }

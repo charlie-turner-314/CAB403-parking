@@ -21,3 +21,7 @@ int add_plate(NumberPlates *plates, char *platestr);
 NumberPlates *list_from_file(char *FILENAME, pthread_mutex_t *rand_mutex);
 
 char *random_available_plate(NumberPlates *plates);
+
+int clear_plates(NumberPlates *plates);
+
+int destroy_plates(NumberPlates *plates);

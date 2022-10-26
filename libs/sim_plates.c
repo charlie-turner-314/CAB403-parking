@@ -1,23 +1,9 @@
 #include "sim_plates.h"
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-int add_plate(NumberPlates *plates, char *platestr) {
-  Plate *plate = malloc(sizeof(Plate));
-  if (plate == NULL) {
-    perror("Error allocating memory for plate");
-    exit(EXIT_FAILURE);
-  }
-  // copy number into plate struct until null terminator or 7 characters
-  memccpy(plate->plate, platestr, 0, 7);
-  pthread_mutex_lock(&plates->mutex);
-  plate->next = plates->head;
-  plates->head = plate;
-  plates->count += 1;
-  pthread_mutex_unlock(&plates->mutex);
-  return 1;
-}
+#include <time.h>
 
 // read number plates from a file called "plates.txt"
 // store them in a linked list
@@ -33,11 +19,11 @@ NumberPlates *list_from_file(char *FILENAME, pthread_mutex_t *rand_mutex) {
   ssize_t linelen;
   // create the linked list
   NumberPlates *plates = malloc(sizeof(NumberPlates));
-  plates->rand_mutex = rand_mutex;
   if (!plates) {
     perror("Error allocating memory for plates");
     exit(EXIT_FAILURE);
   }
+  plates->rand_mutex = rand_mutex;
   pthread_mutex_init(&plates->mutex, NULL);
   plates->count = 0;
   plates->head = NULL;
@@ -52,6 +38,22 @@ NumberPlates *list_from_file(char *FILENAME, pthread_mutex_t *rand_mutex) {
   free(line);
   fclose(fp);
   return plates;
+}
+
+int add_plate(NumberPlates *plates, char *platestr) {
+  Plate *plate = calloc(1, sizeof(Plate));
+  if (plate == NULL) {
+    perror("Error allocating memory for plate");
+    exit(EXIT_FAILURE);
+  }
+  // copy number into plate struct until null terminator or 7 characters
+  memccpy(plate->plate, platestr, 0, 7);
+  pthread_mutex_lock(&plates->mutex);
+  plate->next = plates->head;
+  plates->head = plate;
+  plates->count += 1;
+  pthread_mutex_unlock(&plates->mutex);
+  return 1;
 }
 
 // generate a car with a random number plate
@@ -77,6 +79,7 @@ char *random_available_plate(NumberPlates *plates) {
     // pretty slow, but it works for now
     // TODO: make this faster, can probably just index in with the size of a
     // plate
+
     for (size_t i = 0; i < index; i++) {
       prev = plate_node;
       plate_node = plate_node->next;
@@ -106,4 +109,21 @@ char *random_available_plate(NumberPlates *plates) {
   }
   pthread_mutex_unlock(&plates->mutex); // unlock plates mutex
   return plate;
+}
+
+int clear_plates(NumberPlates *plates) {
+  while (plates->head != NULL) {
+    Plate *temp = plates->head;
+    plates->head = plates->head->next;
+    plates->count -= 1;
+    free(temp);
+  }
+  return 1;
+}
+
+int destroy_plates(NumberPlates *plates) {
+  clear_plates(plates);
+  pthread_mutex_destroy(&plates->mutex);
+  free(plates);
+  return 1;
 }

@@ -194,71 +194,85 @@ void wait_for_lpr(struct LPR *lpr) {
   pthread_mutex_unlock(&lpr->mutex);
 }
 
+// checks each level, returns 0 immediately if any level has the alarm active
+int alarm_is_active() {
+  for (int i = 0; i < NUM_LEVELS; i++) {
+    if (shm->levels[i].alarm) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 void *entry_handler(void *arg) {
   struct EntryArgs *args = (struct EntryArgs *)arg;
   int id = args->id;
   struct Entrance *entrance = &shm->entrances[id]; // The corresponding entrance
   while (true) {
-    // check that the we aren't evacuating
-
     // wait for a car to arrive at the LPR
     wait_for_lpr(&entrance->lpr);
-    // should be a licence plate there now, so read it
-    char *plate = entrance->lpr.plate;
-    // check if the car is in the hashtable (and not already in the car park)
-    int value = ts_get_number_plate(plate);
-    char level;
-    // TODO: fire alarm stuff
-    if (GET_ASSIGNED_LEVEL(value) == NO_LEVEL &&
-        GET_CURRENT_LEVEL(value) == NO_LEVEL) { // not already in but allowed
-      // set info sign to a random available level
-      int *levels = calloc(NUM_LEVELS + 1, sizeof(int));
-      if (levels == NULL) {
-        perror("Levels Calloc");
-        exit(EXIT_FAILURE);
+    char level = '\0';
+    if (!alarm_is_active()) {
+      // should be a licence plate there now, so read it
+      char *plate = entrance->lpr.plate;
+      // check if the car is in the hashtable (and not already in the car park)
+      int value = ts_get_number_plate(plate);
+
+      if (GET_ASSIGNED_LEVEL(value) == NO_LEVEL &&
+          GET_CURRENT_LEVEL(value) == NO_LEVEL) { // not already in but allowed
+        // set info sign to a random available level
+        int *levels = calloc(NUM_LEVELS + 1, sizeof(int));
+        if (levels == NULL) {
+          perror("Levels Calloc");
+          exit(EXIT_FAILURE);
+        }
+        levels = get_available_levels(levels);
+        if (levels[0] == 0) {
+          level = 'F'; // Carpark Full
+        } else {
+          pthread_mutex_lock(&rand_mutex);
+          int levelID =
+              rand() % levels[0] + 1; // random available level index (need to
+                                      // add 1 to skip the count element)
+          pthread_mutex_unlock(&rand_mutex);
+          level = levels[levelID]; // random available level (integer)
+          // increment the level capacity
+          ts_add_cars_to_level(level, 1);
+          // assign the car to the level
+          ts_set_assigned_level(plate, level);
+          // set the level to the character representation
+          level = INT_TO_CHAR(level + 1); // level offset by 1 for display
+        }
+        free(levels); // get rid of the levels array
+      } else {        // not allowed in the car park (already in or not in the
+                      // hashtable)
+        level = 'X';
       }
-      levels = get_available_levels(levels);
-      if (levels[0] == 0) {
-        level = 'F'; // Carpark Full
-      } else {
-        pthread_mutex_lock(&rand_mutex);
-        int levelID =
-            rand() % levels[0] + 1; // random available level index (need to add
-                                    // 1 to skip the count element)
-        pthread_mutex_unlock(&rand_mutex);
-        level = levels[levelID]; // random available level (integer)
-        // increment the level capacity
-        ts_add_cars_to_level(level, 1);
-        // assign the car to the level
-        ts_set_assigned_level(plate, level);
-        // set the level to the character representation
-        level = INT_TO_CHAR(level + 1); // level offset by 1 for display
-      }
-      free(levels); // get rid of the levels array
-    } else { // not allowed in the car park (already in or not in the hashtable)
-      level = 'X';
     }
 
     // set the sign
     pthread_mutex_lock(&entrance->sign.mutex);
-    entrance->sign.display = level;
+    if (level) { // don't touch the level if we are evacuating
+      entrance->sign.display = level;
+    }
     pthread_cond_broadcast(&entrance->sign.condition);
     pthread_mutex_unlock(&entrance->sign.mutex);
 
-    // Tell the simulator to open the gate
-    // TODO: other cases
-    if (level != 'X') {
+    // Tell the simulator to open the gate if the level is one of the numbers
+    if ((level && level != 'X' && level != 'F') || alarm_is_active()) {
       pthread_mutex_lock(&entrance->gate.mutex);
       entrance->gate.status = 'R';
       pthread_cond_broadcast(&entrance->gate.condition);
       pthread_mutex_unlock(&entrance->gate.mutex);
 
-      // wait 20ms and then tell sim to close the gate
-      rand_delay_ms(20, 20, &rand_mutex);
-      pthread_mutex_lock(&entrance->gate.mutex);
-      entrance->gate.status = 'L';
-      pthread_cond_broadcast(&entrance->gate.condition);
-      pthread_mutex_unlock(&entrance->gate.mutex);
+      // wait 20ms and then tell sim to close the gate if the alarm is not
+      if (!alarm_is_active()) {
+        delay_ms(20);
+        pthread_mutex_lock(&entrance->gate.mutex);
+        entrance->gate.status = 'L';
+        pthread_cond_broadcast(&entrance->gate.condition);
+        pthread_mutex_unlock(&entrance->gate.mutex);
+      }
     }
 
     // clear the LPR
@@ -326,8 +340,15 @@ void *level_handler(void *arg) {
 void *exit_handler(void *arg) {
   struct ExitArgs *args = (struct ExitArgs *)arg;
   int id = args->id;
+  struct Exit *exit = &shm->exits[id]; // The corresponding exit
   while (true) {
-    struct Exit *exit = &shm->exits[id]; // The corresponding exit
+    // if the alarm is active, ensure the gate is open
+    if (alarm_is_active()) {
+      pthread_mutex_lock(&exit->gate.mutex);
+      exit->gate.status = 'R';
+      pthread_cond_broadcast(&exit->gate.condition);
+      pthread_mutex_unlock(&exit->gate.mutex);
+    }
     // wait for a car to arrive at the LPR
     wait_for_lpr(&exit->lpr);
     // should be a licence plate there now, so read it
@@ -340,12 +361,15 @@ void *exit_handler(void *arg) {
     // car left, unassign them from the carpark.
     ts_set_assigned_level(plate, NO_LEVEL);
     ts_set_current_level(plate, NO_LEVEL);
-    // wait 20ms and then tell sim to close the gate
-    delay_ms(20);
-    pthread_mutex_lock(&exit->gate.mutex);
-    exit->gate.status = 'L';
-    pthread_cond_broadcast(&exit->gate.condition);
-    pthread_mutex_unlock(&exit->gate.mutex);
+    // wait 20ms and then tell sim to close the gate, only if we aren't
+    // evacuating
+    if (!alarm_is_active()) {
+      delay_ms(20);
+      pthread_mutex_lock(&exit->gate.mutex);
+      exit->gate.status = 'L';
+      pthread_cond_broadcast(&exit->gate.condition);
+      pthread_mutex_unlock(&exit->gate.mutex);
+    }
     // clear the LPR, ready for another car
     pthread_mutex_lock(&exit->lpr.mutex);
     memset(exit->lpr.plate, '\0', 6);

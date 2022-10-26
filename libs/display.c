@@ -95,19 +95,17 @@ void *man_display_handler(void *arg) {
       pthread_mutex_unlock(&shm->levels[i].lpr.mutex);
 
       ANSI_CTRL_POS(hrow + 2, col);
-      int temp = shm->levels[i].temp;
-      printf("  %d   |\n", temp ? temp : ' ');
+      int16_t temp = shm->levels[i].temp;
+      printf("  %02d  |\n", temp);
       ANSI_CTRL_POS(hrow + 3, col);
-      int alarm = shm->levels[i].alarm;
-      printf("  %d   |\n", alarm ? alarm : ' ');
+      int8_t alarm = shm->levels[i].alarm;
+      printf(" %s  |\n", alarm ? " ON" : "OFF");
       ANSI_CTRL_POS(hrow + 4, col);
-      // NOTE: assumes capacity is a two digit number for formatting, don't
-      // think we really need to fix this
-      printf("  %d  |\n", LEVEL_CAPACITY);
+      printf("  %02d  |\n", LEVEL_CAPACITY);
       ANSI_CTRL_POS(hrow + 5, col);
       char levelstr[2] = {'0' + i, '\0'};
       pthread_mutex_lock(data->ht_mutex);
-      printf("  %d  |\n", htab_get(data->ht, levelstr));
+      printf("  %02d  |\n", htab_get(data->ht, levelstr));
       pthread_mutex_unlock(data->ht_mutex);
     }
 

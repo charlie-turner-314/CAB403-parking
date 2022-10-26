@@ -31,6 +31,7 @@ NumberPlates *plates; // Linked list of number plates
 // CAR UTILITIES
 // ----------------------------------------------------
 void wait_at_gate(struct Boomgate *gate) {
+  // wait for exit gate to be open
   pthread_mutex_lock(&gate->mutex);
   while (gate->status != 'O') {
     pthread_cond_wait(&gate->condition, &gate->mutex);
@@ -40,11 +41,10 @@ void wait_at_gate(struct Boomgate *gate) {
 
 void send_licence_plate(char *plate, struct LPR *lpr) {
   pthread_mutex_lock(&lpr->mutex);
-  // wait for manager to clear the plate reader
+  // wait for level lpr to be free (cleared by manager)
   while (lpr->plate[0] != '\0') {
     pthread_cond_wait(&lpr->condition, &lpr->mutex);
   }
-  printf("Sending plate: %s to lpr\n", plate);
   // write the car's plate to the level lpr
   memccpy(lpr->plate, plate, 0, 6);
   // broadcast to threads waiting on the level lpr and unlock mutex
@@ -52,14 +52,17 @@ void send_licence_plate(char *plate, struct LPR *lpr) {
   pthread_mutex_unlock(&lpr->mutex);
 }
 
+// car is at front of queue
 int attempt_entry(ct_data *car_data) {
+  // wait 2ms
+  rand_delay_ms(2, 2, &rand_mutex);
   // signal LPR on the shared memory
   struct Entrance *entrance =
       &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
   int level_id;
   // wait 2ms for sign to update
-  delay_ms(2);
+  rand_delay_ms(2, 2, &rand_mutex);
   // wait on the entrance sign
   pthread_mutex_lock(&entrance->sign.mutex);
   while (entrance->sign.display == '\0') {
@@ -72,12 +75,11 @@ int attempt_entry(ct_data *car_data) {
     level_id = display - '1';            // convert to level index
     // wait at gate if given a level
     wait_at_gate(&entrance->gate);
-  } else { // Full or Not allowed Or Evacuating
-    level_id = -1;
-  }
-  // remove self from queue
+  } else {
+    level_id = -1; // no level given
+  }                // remove self from queue
   // safe to do this because we know the car is at the front of the queue,
-  // and has been assigned a level, will trigger next car to begin entry
+  // and has been assigned a level
   queue_pop(car_data->entry_queue);
   return level_id;
 }
@@ -87,6 +89,7 @@ void park_car(ct_data *car_data, int level_id) {
   rand_delay_ms(10, 10, &rand_mutex);
   // signal the level that the car is there
   send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
+
   // stay parked for 100-1000ms
   rand_delay_ms(100, 1000, &rand_mutex);
 }
@@ -145,12 +148,14 @@ void *car_handler(void *arg) {
     // Assigned level, or -1 if not allowed
     int level_id = attempt_entry(data);
 
-    // +++ Not Touching Shared Memory +++
     if (level_id >= NUM_LEVELS) {
       perror("Error: level_id is greater than or equal to NUM_LEVELS\n");
       exit(EXIT_FAILURE);
     }
-    // if level_id is -1 then the car is not allowed in
+    // if level_id is negative, then the car is not allowed
+    // NOTE: this breaks the plate list when evacuating, as there
+    // is no way to tell whether the car should put it's plate back
+    // in the list during an evacuation
     if (level_id == -1) {
       pthread_mutex_lock(&used_threads_mutex);
       used_threads--;
@@ -166,7 +171,6 @@ void *car_handler(void *arg) {
       level_id = rand() % NUM_LEVELS;
     }
     pthread_mutex_unlock(&rand_mutex);
-    // +++ END not Touching Shared Memory +++
 
     // park the car on the given level
 
@@ -224,8 +228,9 @@ void *temp_sim(void *arg) {
   return NULL;
 }
 
+char input = 'o';
+
 void *input_handler() {
-  char input = '\0';
   // setup terminal to read character without pressing enter
   struct termios oldt, newt;
   tcgetattr(STDIN_FILENO, &oldt);
@@ -250,17 +255,14 @@ void *gate_handler(void *arg) {
   struct Boomgate *gate = (struct Boomgate *)arg;
   while (run || used_threads > 0) {
     pthread_mutex_lock(&gate->mutex);
-    // only need to do anything if the manager has set to R or L
     while (!(gate->status == 'R' || gate->status == 'L') &&
            (used_threads > 0 || run)) {
-      int res = pthread_cond_wait(&gate->condition, &gate->mutex);
-      if (res) {
-        printf("Error: pthread_cond_wait returned %d\n", res);
-        perror("Error: pthread_cond_wait failed\n");
-        exit(EXIT_FAILURE);
-      }
+      pthread_cond_wait(&gate->condition, &gate->mutex);
     }
-    pthread_mutex_unlock(&gate->mutex);
+    if (used_threads == 0 && !run) {
+      pthread_mutex_unlock(&gate->mutex);
+      break;
+    }
     // gate is now 'R' or 'L
     if (gate->status == 'R') {
       rand_delay_ms(10, 10, &rand_mutex); // raising takes 10ms
@@ -282,6 +284,9 @@ int main(int argc, char *argv[]) {
   // initialise the shared memory
   struct SharedMemory *shm = create_shm(SHM_NAME);
 
+  // protect rand with a mutex
+  pthread_mutex_init(&rand_mutex, NULL);
+
   // num used threads
   pthread_mutex_init(&used_threads_mutex, NULL);
 
@@ -299,7 +304,7 @@ int main(int argc, char *argv[]) {
 
   // handle any user input (q) to quit
   pthread_t input_thread;
-  pthread_create(&input_thread, NULL, input_handler, NULL);
+  pthread_create(&input_thread, NULL, input_handler, &input);
 
   // handle the (limited) display for the simulator
   pthread_t display_thread;
@@ -341,7 +346,7 @@ int main(int argc, char *argv[]) {
   while (run) {
     char *plate = random_available_plate(plates);
     if (plate) {
-      // create some car data and put it in the queue
+      // create a car thread
       ct_data *data = calloc(1, sizeof(ct_data));
       if (!data) {
         perror("Calloc car data");
@@ -433,9 +438,10 @@ int main(int argc, char *argv[]) {
   destroy_queue(car_queue);
   printf("Entry Queue Destroyed\n");
 
-  // unmap the shared memory
-  destroy_shm(shm);
-  printf("Shared Memory Unmapped, exiting...\n");
+  // destroy the shared memory after use
+  // can't actually have this as manager may still be using it so it locks up
+  // destroy_shm(shm);
+  // printf("Shared Memory Destroyed, exiting...\n");
 
   return 0;
 }

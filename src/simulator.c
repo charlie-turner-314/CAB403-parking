@@ -198,7 +198,7 @@ void *temp_sim(void *arg) {
   int randTemp = 0;
   int regular_cycles = 1;
   while (run) {
-    int fire_interval = 2500;
+    int fire_interval = 2500; // 5 seconds
     if ((regular_cycles % fire_interval) == 0) {
       int fire_cycles = 1;
       while (fire_cycles < 1500) {
@@ -210,7 +210,7 @@ void *temp_sim(void *arg) {
           shm->levels[i].temp = randTemp;
         }
         fire_cycles += 1;
-        usleep(2000);
+        delay_ms(2);
       }
       regular_cycles += 1;
     } else {
@@ -222,7 +222,7 @@ void *temp_sim(void *arg) {
         shm->levels[i].temp = randTemp;
       }
       regular_cycles += 1;
-      usleep(2000);
+      delay_ms(2);
     }
   }
   return NULL;

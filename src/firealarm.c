@@ -171,11 +171,13 @@ int main() {
         delay_ms(20); // update sign with new letter every 20ms
       }
     } else {
+      fprintf(stderr, "--- ALARM DEACTIVATED ---\n");
       // Deactivate alarms on all levels
       for (int i = 0; i < NUM_LEVELS; i++) {
         shm->levels[i].alarm = 0; // set shm alarm to false
         openboomgate(i);          // open up all boom gates
       }
+      delay_ms(2); // sleep for 2 ms
     }
   }
 

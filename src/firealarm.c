@@ -147,11 +147,16 @@ int main() {
   for (size_t i = 0; i < NUM_LEVELS; i++) {
     pthread_create(&level_threads[i], NULL, temp_monitor, (void *)i);
   }
+  int8_t printed_deactivated = 1; // don't print deactivated on first read
+  int8_t printed_activated = 0;
 
   while (1) {
-
     if (alarm_active == 1) {
-      fprintf(stderr, "*** ALARM ACTIVE ***\n");
+      if (!printed_activated) {
+        fprintf(stderr, "*** ALARM ACTIVE ***\n");
+        printed_activated = 1;
+        printed_deactivated = 0;
+      }
 
       // Handle the alarm system and open boom gates
       // Activate alarms on all levels
@@ -171,11 +176,14 @@ int main() {
         delay_ms(20); // update sign with new letter every 20ms
       }
     } else {
-      fprintf(stderr, "--- ALARM DEACTIVATED ---\n");
+      if (!printed_deactivated) {
+        fprintf(stderr, "*** ALARM DEACTIVATED ***\n");
+        printed_deactivated = 1;
+        printed_activated = 0;
+      }
       // Deactivate alarms on all levels
       for (int i = 0; i < NUM_LEVELS; i++) {
         shm->levels[i].alarm = 0; // set shm alarm to false
-        openboomgate(i);          // open up all boom gates
       }
       delay_ms(2); // sleep for 2 ms
     }

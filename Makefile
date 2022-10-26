@@ -24,16 +24,22 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CC = gcc
 CFLAGS = -g -Wall -Wextra -Werror $(INC_FLAGS) 
 
+MKDIR_P ?= mkdir -p
 # ---------------- NEED THESE ON LINUX I THINK --------------------------
 #LDFLAGS = -lrt -lpthread -lm
 
-all: main test
 
 # compile executables for C files in src directory
 main: $(foreach SRC, $(filter src/%, $(SRCS)), $(MAIN_EXEC_DIR)/$(notdir $(SRC:.c=)))
+	@echo "Run the executables with:"
+	@echo "\033[0;32m Simulator: ./build/bin/simulator\033[0m"
+	@echo "\033[0;34m   Manager: ./build/bin/manager\033[0m"
+	@echo "\033[0;31m Firealarm: ./build/bin/firealarm\033[0m\n"
+	@echo "Make and Run tests with: \033[0;33mmake all\033[0m"
+
+all: main test runtests
 
 # Ensure objs doesn't contain the other objects in the src directory or the test directory
-
 $(MAIN_EXEC_DIR)/% : SRCS := $(filter-out src/%, $(filter-out test/%, $(SRCS)))
 $(MAIN_EXEC_DIR)/% : OBJS = $(SRCS:%.c=$(OBJ_DIR)/%.o)
 # add the current object to the list of objects, as it was removed above
@@ -72,7 +78,6 @@ clean:
 
 -include $(DEPS)
 
-MKDIR_P ?= mkdir -p
 
 # keep obj files around for a rainy day
 .SECONDARY: $(OBJS)

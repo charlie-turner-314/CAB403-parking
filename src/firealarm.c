@@ -1,3 +1,4 @@
+#include "delay.h"
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
@@ -121,7 +122,7 @@ void *temp_monitor(void *arg) {
       alarm_active = 0;
     }
     // sleep for 2 ms
-    usleep(2000);
+    delay_ms(2);
   }
   return NULL;
 }
@@ -167,7 +168,7 @@ int main() {
           shm->entrances[i].sign.display = *p;
           pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
         }
-        usleep(20000); // update sign with new letter every 20ms
+        delay_ms(20); // update sign with new letter every 20ms
       }
     } else {
       // Deactivate alarms on all levels

@@ -55,14 +55,14 @@ void send_licence_plate(char *plate, struct LPR *lpr) {
 // car is at front of queue
 int attempt_entry(ct_data *car_data) {
   // wait 2ms
-  rand_delay_ms(2, 2, &rand_mutex);
+  delay_ms(2);
   // signal LPR on the shared memory
   struct Entrance *entrance =
       &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
   int level_id;
   // wait 2ms for sign to update
-  rand_delay_ms(2, 2, &rand_mutex);
+  delay_ms(2);
   // wait on the entrance sign
   pthread_mutex_lock(&entrance->sign.mutex);
   while (entrance->sign.display == '\0') {
@@ -86,7 +86,7 @@ int attempt_entry(ct_data *car_data) {
 
 void park_car(ct_data *car_data, int level_id) {
   // travel to the level (10ms)
-  rand_delay_ms(10, 10, &rand_mutex);
+  delay_ms(10);
   // signal the level that the car is there
   send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
 
@@ -98,7 +98,7 @@ void exit_car(ct_data *car_data, int level_id) {
   // signal the level lpr
   send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
   // travel to the exit (10ms)
-  rand_delay_ms(10, 10, &rand_mutex);
+  delay_ms(10);
   // get random exit
   pthread_mutex_lock(&rand_mutex);
   int exit = rand() % NUM_EXITS;
@@ -265,11 +265,11 @@ void *gate_handler(void *arg) {
     }
     // gate is now 'R' or 'L
     if (gate->status == 'R') {
-      rand_delay_ms(10, 10, &rand_mutex); // raising takes 10ms
+      delay_ms(10); // raising takes 10ms
       gate->status = 'O';
       pthread_cond_broadcast(&gate->condition);
     } else {
-      rand_delay_ms(10, 10, &rand_mutex); // closing takes 10ms
+      delay_ms(10); // closing takes 10ms
       gate->status = 'C';
       pthread_cond_broadcast(&gate->condition);
     }
@@ -365,7 +365,7 @@ int main(int argc, char *argv[]) {
       free(data);
     }
     free(plate); // we don't need the plate anymore
-    // wait between 1 and 100 ms
+    // wait between 1 and 100 ms before creating new car
     rand_delay_ms(1, 100, &rand_mutex);
   }
   // join the threads

@@ -7,6 +7,7 @@ typedef struct ManDisplayData {
   struct SharedMemory *shm;  // pointer to the shared memory
   ht_t *ht;                  // hashtable of car positions
   pthread_mutex_t *ht_mutex; // mutex for the hashtable
+  float *billing_total;      // Billing total           
 } ManDisplayData;
 
 typedef struct SimDisplayData {

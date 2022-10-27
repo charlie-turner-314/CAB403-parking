@@ -566,6 +566,7 @@ int main(int argc, char *argv[]) {
     display_data.ht = capacity_ht;
     display_data.ht_mutex = &capacity_mutex;
     display_data.shm = shm;
+    display_data.billing_total = &total_bill;
     pthread_t display_thread;
     pthread_create(&display_thread, NULL, man_display_handler, &display_data);
   }

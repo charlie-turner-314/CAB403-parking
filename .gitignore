@@ -60,3 +60,6 @@ build
 # executables
 src/manager
 src/simulator
+
+# billing
+./billing.txt

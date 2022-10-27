@@ -28,6 +28,7 @@ MKDIR_P ?= mkdir -p
 # ---------------- NEED THESE ON LINUX I THINK --------------------------
 #LDFLAGS = -lrt -lpthread -lm
 
+
 # compile executables for C files in src directory
 main: $(foreach SRC, $(filter src/%, $(SRCS)), $(MAIN_EXEC_DIR)/$(notdir $(SRC:.c=)))
 	@echo "Run the executables with:"

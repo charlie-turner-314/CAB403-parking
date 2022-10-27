@@ -33,7 +33,7 @@ item_t *htab_find(ht_t *h, char *key);
 // Add an item to the hash table
 // OR update value if exists
 // allocate memory for the item and add it to the hash table
-bool htab_set(ht_t *h, char *key, int value);
+bool htab_set(ht_t *h, char *key, void *value, size_t size);
 
 // Remove an item from the hash table
 // free the memory allocated for the item
@@ -43,10 +43,10 @@ bool htab_remove(ht_t *h, char *key);
 bool htab_resize(ht_t *h);
 
 // get the value of a particular key
-int htab_get(ht_t *h, char *key);
+void *htab_get(ht_t *h, char *key);
 
 // get the value of an item
-int item_get(item_t *item);
+void *item_get(item_t *item);
 
 // hashtable metadata
 // total capacity
@@ -54,7 +54,3 @@ size_t htab_capacity(ht_t *h);
 
 // number of items
 size_t htab_size(ht_t *h);
-
-void item_print(item_t *item);
-
-void htab_print(ht_t *h);

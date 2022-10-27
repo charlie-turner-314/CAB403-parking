@@ -105,7 +105,7 @@ void *man_display_handler(void *arg) {
       ANSI_CTRL_POS(hrow + 5, col);
       char levelstr[2] = {'0' + i, '\0'};
       pthread_mutex_lock(data->ht_mutex);
-      printf("  %02d  |\n", htab_get(data->ht, levelstr));
+      printf("  %02d  |\n", *(int *)htab_get(data->ht, levelstr));
       pthread_mutex_unlock(data->ht_mutex);
     }
 

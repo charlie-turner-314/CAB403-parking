@@ -11,11 +11,11 @@
       "-Itest",
       "-c",
       "-o",
-      "build/obj/src/simulator.o",
-      "src/simulator.c"
+      "build/obj/src/manager.o",
+      "src/manager.c"
     ],
     "directory": "/Users/charlieturner/Documents/proj/CAB403-parking",
-    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/src/simulator.c",
-    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/src/simulator.o"
+    "file": "/Users/charlieturner/Documents/proj/CAB403-parking/src/manager.c",
+    "output": "/Users/charlieturner/Documents/proj/CAB403-parking/build/obj/src/manager.o"
   }
 ]

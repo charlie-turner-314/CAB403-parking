@@ -1,3 +1,4 @@
+#include "delay.h"
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
@@ -114,14 +115,14 @@ void *temp_monitor(void *arg) {
     // If the newest temp is >= 8 degrees higher than the oldest
     // temp (out of the last 30), this is a high rate-of-rise.
     // Raise the alarm
-    if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) &&
-        (emptyReadings == 0)) {
-      alarm_active = 1;
-    } else {
-      alarm_active = 0;
-    }
+    // if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) &&
+    //     (emptyReadings == 0)) {
+    //   alarm_active = 1;
+    // } else {
+    //   alarm_active = 0;
+    // }
     // sleep for 2 ms
-    usleep(2000);
+    delay_ms(2);
   }
   return NULL;
 }
@@ -146,11 +147,16 @@ int main() {
   for (size_t i = 0; i < NUM_LEVELS; i++) {
     pthread_create(&level_threads[i], NULL, temp_monitor, (void *)i);
   }
+  int8_t printed_deactivated = 1; // don't print deactivated on first read
+  int8_t printed_activated = 0;
 
   while (1) {
-
     if (alarm_active == 1) {
-      fprintf(stderr, "*** ALARM ACTIVE ***\n");
+      if (!printed_activated) {
+        fprintf(stderr, "*** ALARM ACTIVE ***\n");
+        printed_activated = 1;
+        printed_deactivated = 0;
+      }
 
       // Handle the alarm system and open boom gates
       // Activate alarms on all levels
@@ -167,14 +173,19 @@ int main() {
           shm->entrances[i].sign.display = *p;
           pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
         }
-        usleep(20000); // update sign with new letter every 20ms
+        delay_ms(20); // update sign with new letter every 20ms
       }
     } else {
+      if (!printed_deactivated) {
+        fprintf(stderr, "*** ALARM DEACTIVATED ***\n");
+        printed_deactivated = 1;
+        printed_activated = 0;
+      }
       // Deactivate alarms on all levels
       for (int i = 0; i < NUM_LEVELS; i++) {
         shm->levels[i].alarm = 0; // set shm alarm to false
-        openboomgate(i);          // open up all boom gates
       }
+      delay_ms(2); // sleep for 2 ms
     }
   }
 

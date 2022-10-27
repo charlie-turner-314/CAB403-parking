@@ -55,14 +55,14 @@ void send_licence_plate(char *plate, struct LPR *lpr) {
 // car is at front of queue
 int attempt_entry(ct_data *car_data) {
   // wait 2ms
-  rand_delay_ms(2, 2, &rand_mutex);
+  delay_ms(2);
   // signal LPR on the shared memory
   struct Entrance *entrance =
       &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
   int level_id;
   // wait 2ms for sign to update
-  rand_delay_ms(2, 2, &rand_mutex);
+  delay_ms(2);
   // wait on the entrance sign
   pthread_mutex_lock(&entrance->sign.mutex);
   while (entrance->sign.display == '\0') {
@@ -86,7 +86,7 @@ int attempt_entry(ct_data *car_data) {
 
 void park_car(ct_data *car_data, int level_id) {
   // travel to the level (10ms)
-  rand_delay_ms(10, 10, &rand_mutex);
+  delay_ms(10);
   // signal the level that the car is there
   send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
 
@@ -98,7 +98,7 @@ void exit_car(ct_data *car_data, int level_id) {
   // signal the level lpr
   send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
   // travel to the exit (10ms)
-  rand_delay_ms(10, 10, &rand_mutex);
+  delay_ms(10);
   // get random exit
   pthread_mutex_lock(&rand_mutex);
   int exit = rand() % NUM_EXITS;
@@ -195,23 +195,41 @@ void *car_handler(void *arg) {
 // Generate a fire every 5 seconds that lasts for 3 seconds.
 void *temp_sim(void *arg) {
   struct SharedMemory *shm = (struct SharedMemory *)arg;
-  int randTemp = 0;
-  int regular_cycles = 1;
+  int randTemp = 0;         // a random temperature to put in the shared memory
+  int regular_cycles = 1;   // number of cycles since last fire
+  int fire_interval = 2500; // how often to generate a fire
+  int fire_duration = 1500; // duration to keep a fire on before turning it off
+  int fire_type = 0;        // 0 for fixed temperature, 1 for ror
   while (run) {
-    int fire_interval = 2500;
     if ((regular_cycles % fire_interval) == 0) {
-      int fire_cycles = 1;
-      while (fire_cycles < 1500) {
-        for (int i = 0; i < NUM_LEVELS; i++) {
-          pthread_mutex_lock(&rand_mutex);
-          // rand() % (max_number + 1 - minimum_number) + minimum_number
-          randTemp = rand() % (80 + 1 - 58) + 58;
-          pthread_mutex_unlock(&rand_mutex);
-          shm->levels[i].temp = randTemp;
+      int fire_cycles = 0;
+      if (fire_type == 0) {
+        while (fire_cycles < fire_duration) {
+          for (int i = 0; i < NUM_LEVELS; i++) {
+            pthread_mutex_lock(&rand_mutex);
+            // rand() % (max_number + 1 - minimum_number) + minimum_number
+            randTemp = rand() % (80 + 1 - 58) + 58;
+            pthread_mutex_unlock(&rand_mutex);
+            shm->levels[i].temp = randTemp;
+          }
+          fire_cycles += 1;
+          delay_ms(2);
         }
-        fire_cycles += 1;
-        usleep(2000);
+      } else {
+        // create a rate of rise fire, adding between -1 and 5 degrees every 2ms
+        // which will almost certainly cause ror to be triggered after
+        while (fire_cycles < fire_duration) {
+          for (int i = 0; i < NUM_LEVELS; i++) {
+            pthread_mutex_lock(&rand_mutex);
+            randTemp = rand() % (7) - 1;
+            pthread_mutex_unlock(&rand_mutex);
+            shm->levels[i].temp += randTemp;
+          }
+          fire_cycles += 1;
+          delay_ms(2);
+        }
       }
+      fire_type = !fire_type; // change fire type for next time
       regular_cycles += 1;
     } else {
       for (int i = 0; i < NUM_LEVELS; i++) {
@@ -222,7 +240,7 @@ void *temp_sim(void *arg) {
         shm->levels[i].temp = randTemp;
       }
       regular_cycles += 1;
-      usleep(2000);
+      delay_ms(2);
     }
   }
   return NULL;
@@ -259,17 +277,19 @@ void *gate_handler(void *arg) {
            (used_threads > 0 || run)) {
       pthread_cond_wait(&gate->condition, &gate->mutex);
     }
+    pthread_mutex_unlock(&gate->mutex);
     if (used_threads == 0 && !run) {
-      pthread_mutex_unlock(&gate->mutex);
       break;
     }
     // gate is now 'R' or 'L
     if (gate->status == 'R') {
-      rand_delay_ms(10, 10, &rand_mutex); // raising takes 10ms
+      delay_ms(10); // raising takes 10ms
+      pthread_mutex_lock(&gate->mutex);
       gate->status = 'O';
       pthread_cond_broadcast(&gate->condition);
-    } else {
-      rand_delay_ms(10, 10, &rand_mutex); // closing takes 10ms
+    } else if (gate->status == 'L') {
+      delay_ms(10); // closing takes 10ms
+      pthread_mutex_lock(&gate->mutex);
       gate->status = 'C';
       pthread_cond_broadcast(&gate->condition);
     }
@@ -365,7 +385,7 @@ int main(int argc, char *argv[]) {
       free(data);
     }
     free(plate); // we don't need the plate anymore
-    // wait between 1 and 100 ms
+    // wait between 1 and 100 ms before creating new car
     rand_delay_ms(1, 100, &rand_mutex);
   }
   // join the threads

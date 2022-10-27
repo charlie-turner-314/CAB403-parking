@@ -82,6 +82,7 @@ struct SharedMemory *create_shm(char *name) {
     mutex_error |= pthread_mutex_init(&shm->levels[level].lpr.mutex, &attr);
     mutex_error |=
         pthread_cond_init(&shm->levels[level].lpr.condition, &cond_attr);
+    shm->levels[level].temp = 25; // room temp to start with
   }
 
   if (mutex_error) {

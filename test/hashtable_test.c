@@ -7,7 +7,8 @@
 
 bool add_item(ht_t *h) {
   // add one item (don't grow)
-  if (!htab_set(h, TEST_KEY, TEST_VALUE))
+  int value = TEST_VALUE;
+  if (!htab_set(h, TEST_KEY, &value, sizeof(int)))
     return false;
   return true;
 }
@@ -26,7 +27,7 @@ bool add_items(ht_t *h) {
         plate[j] = "0123456789"[(rand() % 10)];
     }
     int value = (rand() % 100);
-    if (!htab_set(h, plate, value))
+    if (!htab_set(h, plate, &value, sizeof(int)))
       return false;
   }
   return true;
@@ -37,7 +38,30 @@ bool find(ht_t *h) {
   item_t *item = htab_find(h, TEST_KEY);
   if (item == NULL)
     return false;
-  if (item_get(item) != TEST_VALUE)
+  if (*(int *)item_get(item) != TEST_VALUE)
+    return false;
+  return true;
+}
+
+struct test_struct {
+  int a;
+  int b;
+};
+bool overwrite_item(ht_t *h) {
+  // add a struct
+  struct test_struct value = {1, 2};
+  if (!htab_set(h, TEST_KEY, &value, sizeof(struct test_struct)))
+    return false;
+  return true;
+}
+
+bool get_overwritten_item(ht_t *h) {
+  // get the struct we added
+  item_t *item = htab_find(h, TEST_KEY);
+  if (item == NULL)
+    return false;
+  struct test_struct *value = item_get(item);
+  if (value->a != 1 || value->b != 2)
     return false;
   return true;
 }
@@ -81,13 +105,15 @@ int main(void) {
   wchar_t check = 0x2713;
 
   int num_tests = 6;
-  bool (*funcs[6])(ht_t * h) = {
-      add_item,          /*0*/
-      add_items,         /*1*/
-      find,              /*2*/
-      find_non_existent, /*3*/
-      remove_item,       /*4*/
-      find_removed       /*5*/
+  bool (*funcs[8])(ht_t * h) = {
+      add_item,             /*0*/
+      add_items,            /*1*/
+      find,                 /*2*/
+      overwrite_item,       /*3*/
+      get_overwritten_item, /*4*/
+      find_non_existent,    /*5*/
+      remove_item,          /*6*/
+      find_removed          /*7*/
   };
   int num_passed = 0;
   for (int i = 0; i < num_tests; i++) {

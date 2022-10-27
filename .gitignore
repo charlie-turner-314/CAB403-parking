@@ -62,4 +62,4 @@ src/manager
 src/simulator
 
 # billing
-billing.txt
+./billing.txt

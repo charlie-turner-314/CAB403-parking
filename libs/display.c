@@ -39,7 +39,8 @@ void *man_display_handler(void *arg) {
     // clear the screen
     printf(ANSI_CTRL_CLEAR);
     printf(ANSI_CTRL_HOME);
-    printf("Parking Simulator - Manager\n");
+    printf(
+        "Parking Simulator - Manager | Press 'q' to exit after exiting sim\n");
     printf("Total bill: $%.2f \n", *data->billing_total);
     // row to display header of each table
     int hrow = 4;
@@ -158,6 +159,7 @@ void *sim_display_handler(void *arg) {
     // print the number of available number plates
     printf("Number of unused allowed plates: %zu\n", *data->available_plates);
     // print each entry queue
+    printf("\033[5;1H");
     for (int i = 0; i < NUM_ENTRANCES; i++) {
       printf("EntryQ %d : ", i);
       entry_queue_print(data->entry_queues[i]);
@@ -166,7 +168,13 @@ void *sim_display_handler(void *arg) {
     // print in the top right corner but leave space for 16 characters
     if (*data->running) {
       printf("\033[1;40H");
-      printf("| Press 'q' to quit\n");
+      printf("| Press 'f' to start a fixed-temp fire\n");
+      printf("\033[2;40H");
+      printf("| Press 'r' to start a rate-of-rise fire\n");
+      printf("\033[3;40H");
+      printf("| Press 's' to stop the fire\n");
+      printf("\033[4;40H");
+      printf("| Press 'q' to quit gracefully\n");
     } else {
       printf("\033[1;40H");
       printf("| Exiting, waiting for manager to release cars...\n");

@@ -6,6 +6,7 @@
 #include "shm_parking.h"
 #include "sim_plates.h"
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,8 +23,14 @@
 // GLOBALS - should try to avoid these but pretty much every function needs them
 // ----------------------------------------------------
 pthread_mutex_t rand_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex for random
-int run = 1;          // Whether the program should continue running
-int used_threads = 0; // number of car threads currently running
+volatile int run = 1; // Whether the program should continue running
+
+#define FIRE_ROR 1
+#define FIRE_FIXED 2
+#define FIRE_OFF 0
+volatile int fire = FIRE_OFF;       // Whether the fire alarm has been triggered
+                                    // (triggered through input for testing)
+int used_threads = 0;               // number of car threads currently running
 pthread_mutex_t used_threads_mutex; // mutex for used_threads
 pthread_mutex_t plate_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex for plate
 NumberPlates *plates; // Linked list of number plates
@@ -60,9 +67,8 @@ int attempt_entry(ct_data *car_data) {
   struct Entrance *entrance =
       &car_data->shm->entrances[car_data->entry_queue->id];
   send_licence_plate(car_data->plate, &entrance->lpr);
-  int level_id;
-  // wait 2ms for sign to update
-  delay_ms(2);
+  int level_id; // index (0-indexed) of level to travel to
+
   // wait on the entrance sign
   pthread_mutex_lock(&entrance->sign.mutex);
   while (entrance->sign.display == '\0') {
@@ -77,9 +83,11 @@ int attempt_entry(ct_data *car_data) {
     wait_at_gate(&entrance->gate);
   } else {
     level_id = -1; // no level given
-  }                // remove self from queue
+  }
+
+  // remove self from queue
   // safe to do this because we know the car is at the front of the queue,
-  // and has been assigned a level
+  // and has been assigned a level so the entry process is complete
   queue_pop(car_data->entry_queue);
   return level_id;
 }
@@ -122,7 +130,8 @@ void *car_handler(void *arg) {
     pthread_mutex_lock(&car_queue->mutex);
     while (car_item == NULL && run) {
       pthread_cond_wait(&car_queue->condition, &car_queue->mutex);
-      car_item = unsafe_queue_pop_return(car_queue);
+      car_item = unsafe_queue_pop_return(
+          car_queue); // get the item from the queue, we need to free later
     }
     pthread_mutex_unlock(&car_queue->mutex);
     if (!run) {
@@ -162,7 +171,7 @@ void *car_handler(void *arg) {
       pthread_mutex_unlock(&used_threads_mutex);
       free(data);
       free(car_item);
-      continue;
+      continue; // ready for next car
     }
 
     pthread_mutex_lock(&rand_mutex);
@@ -195,60 +204,56 @@ void *car_handler(void *arg) {
 // Generate a fire every 5 seconds that lasts for 3 seconds.
 void *temp_sim(void *arg) {
   struct SharedMemory *shm = (struct SharedMemory *)arg;
-  int randTemp = 0;         // a random temperature to put in the shared memory
-  int regular_cycles = 1;   // number of cycles since last fire
-  int fire_interval = 2500; // how often to generate a fire
-  int fire_duration = 1500; // duration to keep a fire on before turning it off
-  int fire_type = 0;        // 0 for fixed temperature, 1 for ror
+  // int randTemp = 0;         // a random temperature to put in the shared
+  // memory int regular_cycles = 1;   // number of cycles since last fire int
+  // fire_interval = 2500; // how often to generate a fire int fire_duration =
+  // 1500; // duration to keep a fire on before turning it off int fire_type =
+  // 0;        // 0 for fixed temperature, 1 for ror
+  int16_t
+      randTempChange; // a random temperature change to alter the shared memory
+  int16_t fixedTempChange; // a specific temperature (e.g from fire to no fire)
+  int lastFireType;
   while (run) {
-    if ((regular_cycles % fire_interval) == 0) {
-      int fire_cycles = 0;
-      if (fire_type == 0) {
-        while (fire_cycles < fire_duration) {
-          for (int i = 0; i < NUM_LEVELS; i++) {
-            pthread_mutex_lock(&rand_mutex);
-            // rand() % (max_number + 1 - minimum_number) + minimum_number
-            randTemp = rand() % (80 + 1 - 58) + 58;
-            pthread_mutex_unlock(&rand_mutex);
-            shm->levels[i].temp = randTemp;
-          }
-          fire_cycles += 1;
-          delay_ms(2);
-        }
-      } else {
-        // create a rate of rise fire, adding between -1 and 5 degrees every 2ms
-        // which will almost certainly cause ror to be triggered after
-        while (fire_cycles < fire_duration) {
-          for (int i = 0; i < NUM_LEVELS; i++) {
-            pthread_mutex_lock(&rand_mutex);
-            randTemp = rand() % (7) - 1;
-            pthread_mutex_unlock(&rand_mutex);
-            shm->levels[i].temp += randTemp;
-          }
-          fire_cycles += 1;
-          delay_ms(2);
-        }
-      }
-      fire_type = !fire_type; // change fire type for next time
-      regular_cycles += 1;
-    } else {
-      for (int i = 0; i < NUM_LEVELS; i++) {
+    for (int i = 0; i < NUM_LEVELS; i++) {
+      if (fire == FIRE_OFF) // no fire
+      {
+        // generate a random temperature between 25 and 32
         pthread_mutex_lock(&rand_mutex);
-        // rand() % (max_number + 1 - minimum_number) + minimum_number
-        randTemp = rand() % (57 + 1 - 0) + 0;
+        fixedTempChange = rand() % 8 + 25;
         pthread_mutex_unlock(&rand_mutex);
-        shm->levels[i].temp = randTemp;
+      } else if (fire == FIRE_FIXED) // fixed temperature fire
+      {
+        // generate a random temperature between 60 and 67
+        pthread_mutex_lock(&rand_mutex);
+        fixedTempChange = rand() % 8 + 60;
+        pthread_mutex_unlock(&rand_mutex);
+      } else if (fire == FIRE_ROR) // ror fire
+      {
+        if (lastFireType != FIRE_ROR) {
+          fixedTempChange = 20;
+          lastFireType = 2;
+        } else {
+          fixedTempChange = 0;
+          // generate a random temperature change between -1 and 2
+          pthread_mutex_lock(&rand_mutex);
+          randTempChange = rand() % 4 - 1;
+          pthread_mutex_unlock(&rand_mutex);
+        }
       }
-      regular_cycles += 1;
-      delay_ms(2);
+      // update the temperature
+      int16_t currTemp = shm->levels[i].temp;
+      int16_t newTemp =
+          fixedTempChange ? fixedTempChange : currTemp + randTempChange;
+      shm->levels[i].temp = newTemp < 99 ? newTemp : 99;
     }
+    lastFireType = fire;
+    delay_ms(2); // 2ms until next update
   }
   return NULL;
 }
 
-char input = 'o';
-
 void *input_handler() {
+  char input = 'o';
   // setup terminal to read character without pressing enter
   struct termios oldt, newt;
   tcgetattr(STDIN_FILENO, &oldt);
@@ -260,6 +265,13 @@ void *input_handler() {
 
   while (input != 'q') {
     input = getchar();
+    if (input == 'r') {
+      fire = FIRE_ROR;
+    } else if (input == 'f') {
+      fire = FIRE_FIXED;
+    } else if (input == 's') {
+      fire = FIRE_OFF;
+    }
   }
   // reset terminal
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
@@ -324,7 +336,7 @@ int main(int argc, char *argv[]) {
 
   // handle any user input (q) to quit
   pthread_t input_thread;
-  pthread_create(&input_thread, NULL, input_handler, &input);
+  pthread_create(&input_thread, NULL, input_handler, NULL);
 
   // handle the (limited) display for the simulator
   pthread_t display_thread;

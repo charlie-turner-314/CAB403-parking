@@ -26,7 +26,7 @@ CFLAGS = -g -Wall -Wextra -Werror $(INC_FLAGS)
 
 MKDIR_P ?= mkdir -p
 # ---------------- NEED THESE ON LINUX I THINK --------------------------
-LDFLAGS = -lrt -lpthread -lm
+# LDFLAGS = -lrt -lpthread -lm
 
 
 # compile executables for C files in src directory

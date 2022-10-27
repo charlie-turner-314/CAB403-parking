@@ -34,10 +34,10 @@ struct SharedMemory *create_shm(char *name) {
   int mutex_error = 0;
 
   // Pthread attributes to share between processes
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
+  pthread_mutexattr_t mutex_attr;
+  pthread_mutexattr_init(&mutex_attr);
   int mut_attr_ret =
-      pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+      pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
   pthread_condattr_t cond_attr;
   pthread_condattr_init(&cond_attr);
   int cond_attr_ret =
@@ -51,15 +51,15 @@ struct SharedMemory *create_shm(char *name) {
   // initialise mutexes and condition variables for the entrances
   for (int entrance = 0; entrance < NUM_ENTRANCES; entrance++) {
     mutex_error |=
-        pthread_mutex_init(&shm->entrances[entrance].lpr.mutex, &attr);
+        pthread_mutex_init(&shm->entrances[entrance].lpr.mutex, &mutex_attr);
     mutex_error |=
         pthread_cond_init(&shm->entrances[entrance].lpr.condition, &cond_attr);
     mutex_error |=
-        pthread_mutex_init(&shm->entrances[entrance].gate.mutex, &attr);
+        pthread_mutex_init(&shm->entrances[entrance].gate.mutex, &mutex_attr);
     mutex_error |=
         pthread_cond_init(&shm->entrances[entrance].gate.condition, &cond_attr);
     mutex_error |=
-        pthread_mutex_init(&shm->entrances[entrance].sign.mutex, &attr);
+        pthread_mutex_init(&shm->entrances[entrance].sign.mutex, &mutex_attr);
     mutex_error |=
         pthread_cond_init(&shm->entrances[entrance].sign.condition, &cond_attr);
     // set boomgates to 'C' for closed
@@ -68,10 +68,11 @@ struct SharedMemory *create_shm(char *name) {
 
   // initialise mutexes and condition variables for the exits
   for (int exit = 0; exit < NUM_EXITS; exit++) {
-    mutex_error |= pthread_mutex_init(&shm->exits[exit].lpr.mutex, &attr);
+    mutex_error |= pthread_mutex_init(&shm->exits[exit].lpr.mutex, &mutex_attr);
     mutex_error |=
         pthread_cond_init(&shm->exits[exit].lpr.condition, &cond_attr);
-    mutex_error |= pthread_mutex_init(&shm->exits[exit].gate.mutex, &attr);
+    mutex_error |=
+        pthread_mutex_init(&shm->exits[exit].gate.mutex, &mutex_attr);
     mutex_error |=
         pthread_cond_init(&shm->exits[exit].gate.condition, &cond_attr);
     shm->exits[exit].gate.status = 'C';
@@ -79,14 +80,15 @@ struct SharedMemory *create_shm(char *name) {
 
   // initialise mutexes and condition variables for the levels
   for (int level = 0; level < NUM_LEVELS; level++) {
-    mutex_error |= pthread_mutex_init(&shm->levels[level].lpr.mutex, &attr);
+    mutex_error |=
+        pthread_mutex_init(&shm->levels[level].lpr.mutex, &mutex_attr);
     mutex_error |=
         pthread_cond_init(&shm->levels[level].lpr.condition, &cond_attr);
     shm->levels[level].temp = 25; // room temp to start with
   }
 
   if (mutex_error) {
-    perror("mutex_initialisation");
+    perror("mutex or condition initialisation");
     exit(EXIT_FAILURE);
   }
 

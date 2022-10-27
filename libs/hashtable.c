@@ -8,7 +8,7 @@
 
 typedef struct item {
   char *key;
-  int value;
+  void *value; // allow any type of value
   item_t *next;
 } item_t;
 
@@ -30,8 +30,7 @@ ht_t *htab_create(ht_t *h, size_t n) {
     return NULL;
   }
   h->capacity = n; // allocated for this many buckets
-
-  h->size = 0; // no items yet
+  h->size = 0;     // no items yet
   return h;
 }
 
@@ -43,6 +42,8 @@ void htab_destroy(ht_t *h) {
       item_t *next = current->next;
       // key is a pointer so must free the memory allocated for it
       free(current->key);
+      // value is a pointer so must free the memory allocated for it
+      free(current->value);
       free(current);
       current = next;
     }
@@ -82,13 +83,17 @@ item_t *htab_find(ht_t *h, char *key) {
   return NULL;
 }
 
-bool htab_set(ht_t *h, char *key, int value) {
+bool htab_set(ht_t *h, char *key, void *value, size_t size) {
   // check if already there
   item_t *existing_item;
   if ((existing_item = htab_find(h, key)) != NULL) {
-    // update the value
-    existing_item->value = value;
-    return true;
+    // free existing value
+    free(existing_item->value);
+    // allocate memory for new value
+    existing_item->value = malloc(size);
+    // copy new value
+    memcpy(existing_item->value, value, size);
+    return existing_item->value != NULL;
   }
 
   // ADDING NEW ITEM
@@ -113,8 +118,10 @@ bool htab_set(ht_t *h, char *key, int value) {
   new_item->key = (char *)calloc(strlen(key) + 1, sizeof(char));
   // set the key
   strncpy(new_item->key, key, strlen(key) + 1);
-  // set the value
-  new_item->value = value;
+  // allocate memory for the value
+  new_item->value = malloc(size);
+  // copy the value
+  memcpy(new_item->value, value, size);
 
   size_t bucket = htab_index(h, key);
   // set the next item in the bucket to the new item
@@ -148,6 +155,7 @@ bool htab_remove(ht_t *h, char *key) {
         prev->next = curr->next;
       }
       free(curr->key);
+      free(curr->value);
       free(curr);
       break;
     }
@@ -208,38 +216,16 @@ bool htab_resize(ht_t *h) {
   return true;
 }
 
-// for debugging, print the hash table
-void item_print(item_t *item) {
-  printf("key: %s, value: %d", item->key, item->value);
-}
-
-void htab_print(ht_t *h) {
-  for (size_t i = 0; i < h->capacity; ++i) {
-    printf("bucket %zu: ", i);
-    if (h->buckets[i] == NULL) {
-      printf("empty\n");
-    } else {
-      for (item_t *j = h->buckets[i]; j != NULL; j = j->next) {
-        item_print(j);
-        if (j->next != NULL) {
-          printf(" -> ");
-        }
-      }
-      printf("\n");
-    }
-  }
-}
-
 // getters
-int htab_get(ht_t *h, char *key) {
+void *htab_get(ht_t *h, char *key) {
   item_t *item = htab_find(h, key);
   if (item == NULL) {
-    return -1;
+    return NULL;
   }
   return item->value;
 }
 
-int item_get(item_t *item) { return item->value; }
+void *item_get(item_t *item) { return item->value; }
 
 size_t htab_capacity(ht_t *h) { return h->capacity; }
 

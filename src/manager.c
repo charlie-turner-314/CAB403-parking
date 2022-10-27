@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 // Assumption
@@ -55,6 +56,13 @@ ht_t *cars_ht; // hashtable of vehicles and their current and assigned level
 pthread_mutex_t capacity_mutex; // mutex for capacity of each level
 ht_t *capacity_ht;              // hashtable of levels and their capacity
 
+// hashtable for storing billing information for cars
+ht_t *billing_ht;
+float total_bill = 0;
+struct timezone;
+struct timeval;
+int gettimeofday(struct timeval *tp, struct timezone *tz);
+
 struct SharedMemory *shm; // shared memory
 
 // structs for passing arguments to threads
@@ -76,7 +84,7 @@ int ts_cars_on_level(int l) {
   level[1] = '\0';
   int cars;
   pthread_mutex_lock(&capacity_mutex);
-  cars = htab_get(capacity_ht, level);
+  cars = *(int *)htab_get(capacity_ht, level);
   pthread_mutex_unlock(&capacity_mutex);
   return cars;
 }
@@ -108,25 +116,28 @@ int ts_add_cars_to_level(int l, int num_cars) {
   level[1] = '\0';
   int cars;
   pthread_mutex_lock(&capacity_mutex);
-  cars = htab_get(capacity_ht, level);
+  cars = *(int *)htab_get(capacity_ht, level);
   cars += num_cars;
-  htab_set(capacity_ht, level, cars);
+  htab_set(capacity_ht, level, &cars, sizeof(int));
   pthread_mutex_unlock(&capacity_mutex);
   return cars;
 }
 
 // thread-safe access to the number plates
 int ts_get_number_plate(char *plate) {
-  int value;
+  int *value;
   // ensure the plate is null-terminated
   char null_terminated_plate[7];
   strncpy(null_terminated_plate, plate, 7);
   null_terminated_plate[6] = '\0';
   // ----------
   pthread_mutex_lock(&cars_mutex);
-  value = htab_get(cars_ht, null_terminated_plate);
+  value = (int *)htab_get(cars_ht, null_terminated_plate);
   pthread_mutex_unlock(&cars_mutex);
-  return value;
+  if (value == NULL) {
+    return -1;
+  }
+  return *value;
 }
 
 // thread-safe allocation to a level
@@ -138,9 +149,13 @@ bool ts_set_assigned_level(char *plate, int level) {
   // ----------
   bool success;
   pthread_mutex_lock(&cars_mutex);
-  int current_value = htab_get(cars_ht, null_terminated_plate);
-  int new_value = SET_ASSIGNED_LEVEL(current_value, level);
-  success = htab_set(cars_ht, null_terminated_plate, new_value);
+  int *current_value = (int *)htab_get(cars_ht, null_terminated_plate);
+  if (current_value == NULL) {
+    success = false;
+    return success;
+  }
+  int new_value = SET_ASSIGNED_LEVEL(*current_value, level);
+  success = htab_set(cars_ht, null_terminated_plate, &new_value, sizeof(int));
   pthread_mutex_unlock(&cars_mutex);
   return success;
 }
@@ -154,9 +169,11 @@ bool ts_set_current_level(char *plate, int level) {
   // ----------
   bool success;
   pthread_mutex_lock(&cars_mutex);
-  int current_value = htab_get(cars_ht, null_terminated_plate);
-  int new_value = SET_CURRENT_LEVEL(current_value, level);
-  success = htab_set(cars_ht, null_terminated_plate, new_value);
+  int *current_value = (int *)htab_get(cars_ht, null_terminated_plate);
+  if (!current_value)
+    return false;
+  int new_value = SET_CURRENT_LEVEL(*current_value, level);
+  success = htab_set(cars_ht, null_terminated_plate, &new_value, sizeof(int));
   pthread_mutex_unlock(&cars_mutex);
   return success;
 }
@@ -176,9 +193,11 @@ ht_t *ht_from_file(char *filename) {
   char *line = NULL;
   size_t linecap = 0;
   ssize_t linelen;
+  int unassigned = 0xFF;
   while ((linelen = getline(&line, &linecap, fp)) > 0) {
-    line[6] = '\0';           // null-terminate the plate if not already
-    htab_set(ht, line, 0xFF); // set the value to 0xFF (unassigned)
+    line[6] = '\0'; // null-terminate the plate if not already
+    htab_set(ht, line, &unassigned,
+             sizeof(int)); // set the value to 0xFF (unassigned)
   }
   free(line);
   return ht;
@@ -212,9 +231,9 @@ void *entry_handler(void *arg) {
     // wait for a car to arrive at the LPR
     wait_for_lpr(&entrance->lpr);
     char level = '\0';
+    // should be a licence plate there now, so read it
+    char *plate = entrance->lpr.plate;
     if (!alarm_is_active()) {
-      // should be a licence plate there now, so read it
-      char *plate = entrance->lpr.plate;
       // check if the car is in the hashtable (and not already in the car park)
       int value = ts_get_number_plate(plate);
 
@@ -267,6 +286,22 @@ void *entry_handler(void *arg) {
 
       // wait 20ms and then tell sim to close the gate if the alarm is not
       if (!alarm_is_active()) {
+        // Add car to billing table
+        // Null terminate plate
+        char array[7];
+        memccpy(array, plate, 0, 6);
+        array[6] = '\0';
+
+        // get current time in milliseconds
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        long long millisecondsTime =
+            (long long)(tv.tv_sec) * 1000 +
+            (long long)(tv.tv_usec) /
+                1000; // convert tv_sec & tv_usec to// milliseconds
+
+        // add to hashtable
+        htab_set(billing_ht, array, &millisecondsTime, sizeof(long long));
         delay_ms(20);
         pthread_mutex_lock(&entrance->gate.mutex);
         entrance->gate.status = 'L';
@@ -356,6 +391,34 @@ void *exit_handler(void *arg) {
     // open the gate
     pthread_mutex_lock(&exit->gate.mutex);
     exit->gate.status = 'R';
+
+    // Calculate billing
+    char exitplate[7];
+    memccpy(exitplate, plate, 0, 6);
+    exitplate[6] = '\0';
+    long long *entry_time = (long long *)htab_get(billing_ht, exitplate);
+    if (!entry_time) {
+      printf("Car %.6s not found in billing table\n", plate);
+    } else {
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
+      long long millisecondsTime =
+          (long long)(tv.tv_sec) * 1000 +
+          (long long)(tv.tv_usec) /
+              1000; // convert tv_sec & tv_usec to// milliseconds
+      int time_in_carpark = millisecondsTime - *entry_time;
+      float bill = time_in_carpark * COST_PER_MS / TIME_FACTOR;
+      FILE *billing_file = fopen("billing.txt", "a");
+      fprintf(billing_file, "%s $%.2f \n", exitplate, bill);
+      fclose(billing_file);
+      total_bill += bill;
+    }
+
+    // car left, unassign them from the carpark. Has to be in critical section
+    // to prevent sim reusing plate instantly and then manager thinking they are
+    // still in the carpark
+    ts_set_assigned_level(plate, NO_LEVEL);
+    ts_set_current_level(plate, NO_LEVEL);
     pthread_cond_broadcast(&exit->gate.condition);
     pthread_mutex_unlock(&exit->gate.mutex);
     // car left, unassign them from the carpark.
@@ -424,8 +487,12 @@ int main(int argc, char *argv[]) {
   capacity_ht = htab_create(capacity_ht, NUM_LEVELS);
   for (int i = 0; i < NUM_LEVELS; i++) {
     char level[2] = {INT_TO_CHAR(i), '\0'};
-    htab_set(capacity_ht, level, 0);
+    int num_cars = 0;
+    htab_set(capacity_ht, level, &num_cars, sizeof(int));
   }
+
+  // initialise billing hashtable
+  billing_ht = htab_create(billing_ht, 5);
 
   // create entrance threads
   // -------------------------------
@@ -499,6 +566,7 @@ int main(int argc, char *argv[]) {
     display_data.ht = capacity_ht;
     display_data.ht_mutex = &capacity_mutex;
     display_data.shm = shm;
+    display_data.billing_total = &total_bill;
     pthread_t display_thread;
     pthread_create(&display_thread, NULL, man_display_handler, &display_data);
   }

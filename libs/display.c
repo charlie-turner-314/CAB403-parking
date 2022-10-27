@@ -40,8 +40,9 @@ void *man_display_handler(void *arg) {
     printf(ANSI_CTRL_CLEAR);
     printf(ANSI_CTRL_HOME);
     printf("Parking Simulator - Manager\n");
+    printf("Total bill: \n");
     // row to display header of each table
-    int hrow = 3;
+    int hrow = 4;
 
     // print each entrance LPR for each level
     printf("================= Entrances ======================\n\n");
@@ -80,7 +81,7 @@ void *man_display_handler(void *arg) {
     printf("ALARM|\n");
     printf("  CAP|\n");
     printf(" CURR|\n");
-    hrow = 8;
+    hrow = 9;
     for (int i = 0; i < NUM_LEVELS; i++) {
       int col = i * 6 + i + 7;
       ANSI_CTRL_POS(hrow, col + 2);
@@ -113,7 +114,7 @@ void *man_display_handler(void *arg) {
     printf("=================== Exits =======================\n\n");
     printf("  LPR|\n");
     printf(" GATE|\n");
-    hrow = 15;
+    hrow = 16;
     for (int i = 0; i < NUM_EXITS; i++) {
       int col = i * 6 + i + 7;
       ANSI_CTRL_POS(hrow, col + 2);

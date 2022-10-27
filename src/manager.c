@@ -407,7 +407,7 @@ void *exit_handler(void *arg) {
           (long long)(tv.tv_usec) /
               1000; // convert tv_sec & tv_usec to// milliseconds
       int time_in_carpark = millisecondsTime - *entry_time;
-      float bill = time_in_carpark * COST_PER_MS;
+      float bill = time_in_carpark * COST_PER_MS / TIME_FACTOR;
       FILE *billing_file = fopen("billing.txt", "a");
       fprintf(billing_file, "%s $%.2f \n", exitplate, bill);
       fclose(billing_file);

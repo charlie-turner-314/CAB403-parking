@@ -40,6 +40,7 @@ void *man_display_handler(void *arg) {
     printf(ANSI_CTRL_CLEAR);
     printf(ANSI_CTRL_HOME);
     printf("Parking Simulator - Manager\n");
+    printf("Total bill: \n");
     // row to display header of each table
     int hrow = 3;
 

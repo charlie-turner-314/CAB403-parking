@@ -60,6 +60,7 @@ Handle the asynchronous opening and closing of the given boomgate
 */
 
 void *gate_handler(void *arg);
+
 /*
   Wait for the given gate to be open before returning
 */
@@ -113,4 +114,4 @@ Handle any user input from the command line
 
     - `s` to stop any fire
 */
-//void *input_handler(void *arg);
+//void *input_handler();

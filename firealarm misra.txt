@@ -1,0 +1,110 @@
+firealarm.c:171:27: Required A string literal shall not be assigned to an object unless the object’s type is “pointer to const-qualified char”. [misra-c2012-7.4]
+      char *evacmessage = "EVACUATE ";
+                          ^
+firealarm.c:142:9: Required Function types shall be in prototype form with named parameters. [misra-c2012-8.2]
+int main() {
+        ^
+firealarm.c:24:6: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+void elementSwap(int *element1, int *element2) {
+     ^
+firealarm.c:33:6: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+void arrSort(int arr[], int arrLen) {
+     ^
+firealarm.c:43:5: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+int median_calc(int level) {
+    ^
+firealarm.c:68:6: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+void smoothedTemp_handler(int level) {
+     ^
+firealarm.c:79:7: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+void *temp_monitor(void *arg) {
+      ^
+firealarm.c:133:6: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+void openboomgate(int level) {
+     ^
+firealarm.c:14:22: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+struct SharedMemory *shm;
+                     ^
+firealarm.c:16:17: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+pthread_mutex_t alarm_mutex = PTHREAD_MUTEX_INITIALIZER;
+                ^
+firealarm.c:17:16: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+pthread_cond_t alarm_condvar = PTHREAD_COND_INITIALIZER;
+               ^
+firealarm.c:19:5: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+int alarm_active = 0;
+    ^
+firealarm.c:20:5: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+int temps[NUM_LEVELS][5];           // 2D array to calc median value
+    ^
+firealarm.c:21:5: Required A compatible declaration shall be visible when an object or function with external linkage is defined. [misra-c2012-8.4]
+int smoothed_temps[NUM_LEVELS][30]; // 2D array to store smoothed median values
+    ^
+firealarm.c:47:13: Required Both operands of an operator in which the usual arithmetic conversions are performed shall have the same essential type category. [misra-c2012-10.4]
+          4 * sizeof(temps[level][0])); // shift temps up in array
+            ^
+firealarm.c:73:16: Required Both operands of an operator in which the usual arithmetic conversions are performed shall have the same essential type category. [misra-c2012-10.4]
+            29 * sizeof(int));          // shift temps up in array
+               ^
+firealarm.c:87:21: Required A cast shall not be performed between pointer to void and an arithmetic type. [misra-c2012-11.6]
+  size_t level_id = (size_t)arg;
+                    ^
+firealarm.c:150:59: Required A cast shall not be performed between pointer to void and an arithmetic type. [misra-c2012-11.6]
+    pthread_create(&level_threads[i], NULL, temp_monitor, (void *)i);
+                                                          ^
+firealarm.c:34:21: Advisory The precedence of operators within expressions should be made explicit. [misra-c2012-12.1]
+  for (int i = 0; i < arrLen - 1; i++) {
+                    ^
+firealarm.c:35:23: Advisory The precedence of operators within expressions should be made explicit. [misra-c2012-12.1]
+    for (int j = 0; j < arrLen - i - 1; j++) {
+                      ^
+firealarm.c:108:20: Advisory The precedence of operators within expressions should be made explicit. [misra-c2012-12.1]
+    if ((hightemps >= 30 * 0.9) && emptyReadings == 0) {
+                   ^
+firealarm.c:110:70: Advisory The precedence of operators within expressions should be made explicit. [misra-c2012-12.1]
+    } else if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) && (emptyReadings == 0)){
+                                                                     ^
+firealarm.c:54:7: Advisory A function should have a single point of exit at the end [misra-c2012-15.5]
+      return -1;
+      ^
+firealarm.c:36:7: Required The body of an iteration-statement or a selection-statement shall be a compound-statement [misra-c2012-15.6]
+      if (arr[j] > arr[j + 1])
+      ^
+firealarm.c:104:7: Required All if … else if constructs shall be terminated with an else statement [misra-c2012-15.7]
+      }
+      ^
+firealarm.c:46:10: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+  memmove(&temps[level][0], &temps[level][1],
+         ^
+firealarm.c:60:9: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+  memcpy(tempsCopy, temps[level],
+        ^
+firealarm.c:72:12: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+    memmove(&smoothed_temps[level][0], &smoothed_temps[level][1],
+           ^
+firealarm.c:89:9: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+  printf("Monitoring temperature on level %d\n", (level+1));
+        ^
+firealarm.c:143:9: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+  printf("Firealarm System Running\n");
+        ^
+firealarm.c:144:9: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+  fflush(stdout);
+        ^
+firealarm.c:158:16: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+        fprintf(stderr, "*** ALARM ACTIVE ***\n");
+               ^
+firealarm.c:182:16: Required The value returned by a function having non-void return type shall be used [misra-c2012-17.7]
+        fprintf(stderr, "*** ALARM DEACTIVATED ***\n");
+               ^
+firealarm.c:147:13: Required Variable-length array types shall not be used [misra-c2012-18.8]
+  pthread_t level_threads[NUM_LEVELS];
+            ^
+firealarm.c:6:0: Required The Standard Library input/output functions shall not be used [misra-c2012-21.6]
+#include <stdio.h>
+^
+firealarm.c:198:11: Required The Standard Library functions abort, exit, getenv and system of [misra-c2012-21.8]
+      exit(EXIT_FAILURE);
+          ^
+firealarm.c:11:0: Required The Standard Library time and date functions shall not be used [misra-c2012-21.10]
+#include <time.h>

@@ -188,6 +188,7 @@ void *car_handler(void *arg) {
   return NULL;
 }
 
+//Simulate temperature
 void *temp_simulator(void *arg) {
   struct SharedMemory *shm = (struct SharedMemory *)arg;
   int16_t randTempChange;  // a random temperature change to alter temp
@@ -223,7 +224,10 @@ void *temp_simulator(void *arg) {
       // update the temperature
       int16_t currTemp = shm->levels[i].temp;
       int16_t newTemp =
-          fixedTempChange ? fixedTempChange : (currTemp + randTempChange) % 50; // Make sure rate of rise doesnt go above 50c
+          fixedTempChange ? fixedTempChange : (currTemp + randTempChange);
+      if (newTemp >= 60){
+        fire = FIRE_FIXED;
+      }
       shm->levels[i].temp = newTemp < 99 ? newTemp : 99;
     }
     lastFireType = fire;

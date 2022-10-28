@@ -107,23 +107,11 @@ void *temp_monitor(void *arg) {
     // this is considered a high temperature. Raise the alarm
     if ((hightemps >= 30 * 0.9) && emptyReadings == 0) {
       alarm_active = 1;
-    } else if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) && (emptyReadings == 0)){
+    } else if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) && (emptyReadings == 0)){ //ROR raise the alarm
       alarm_active = 1;
     }else {
       alarm_active = 0;
     }
-
-    // rate of rise fire detection
-    // If the newest temp is >= 8 degrees higher than the oldest
-    // temp (out of the last 30), this is a high rate-of-rise.
-    // Raise the alarm
-    // if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) &&
-    //     (emptyReadings == 0)) {
-    //   alarm_active = 1;
-    // } else {
-    //   alarm_active = 0;
-    // }
-    // sleep for 2 ms
     delay_ms(2);
   }
   return NULL;

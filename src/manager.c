@@ -11,36 +11,11 @@
 #include <time.h>
 #include <unistd.h>
 
-/*
-Assumption
-- Maximum 9 levels -> as each display is only 1 char
-   Implication:
-we can store two digits in one int by by using the first (most significant) 4
-bits of the least significant byte for the assigned level and the second four
-bits for the current level,
-   Reasoning:
-Hashmap stored ints until about 24 hrs until due, i don't want to change it
-to a struct right now cause something will break
-   Explanation: (abstracted into macros so not that important)
- e.g
-| Assigned level | Current Level |
-|     0111       |     0100      |
-|      7         |      4        |
-|------------ full --------------|
-|           01110100             |
-|              116               |
-to get assigned -> stored_int >> 4
-to get current  -> stored_int & 0x0F (0x0F is 00001111 in binary)
-  Limitation: would need to one-index to avoid confusion with 0 being
-unassigned/level 0, get around this by storing unassigned as FF (11111111), as
-outside the predefined range of 0-9
-*/
-// Macros for the above
-#define GET_ASSIGNED_LEVEL(x) (x >> 4)
-#define GET_CURRENT_LEVEL(x) (x & 0x0F)
-#define SET_ASSIGNED_LEVEL(x, y) (x = (x & 0x0F) | (y << 4))
-#define SET_CURRENT_LEVEL(x, y) (x = (x & 0xF0) | y)
-#define NO_LEVEL 0xF
+// struct for holding assigned and current car level
+struct car_levels {
+  int8_t current;  // current level, -1 if no level
+  int8_t assigned; // assigned level, -1 if no level
+};
 
 // Macros because signs display chars and not ints
 #define CHAR_TO_INT(c) (c - '0')
@@ -114,8 +89,9 @@ int *get_available_levels(int *levels) {
 
 // thread-safe setting of level capacity
 int ts_add_cars_to_level(int l, int num_cars) {
-  if (l == NO_LEVEL)
+  if (l >= NUM_LEVELS || l < 0) {
     return 0;
+  }
   // turn level into null-terminated string
   char level[2];
   level[0] = INT_TO_CHAR(l);
@@ -138,20 +114,17 @@ int ts_add_cars_to_level(int l, int num_cars) {
 }
 
 // thread-safe access to the number plates
-int ts_get_number_plate(char *plate) {
-  int *value;
+struct car_levels *ts_get_number_plate(char *plate) {
+  struct car_levels *value;
   // ensure the plate is null-terminated
   char null_terminated_plate[7];
   strncpy(null_terminated_plate, plate, 7);
   null_terminated_plate[6] = '\0';
   // ----------
   pthread_mutex_lock(&cars_mutex);
-  value = (int *)htab_get(cars_ht, null_terminated_plate);
+  value = (struct car_levels *)htab_get(cars_ht, null_terminated_plate);
   pthread_mutex_unlock(&cars_mutex);
-  if (value == NULL) {
-    return -1;
-  }
-  return *value;
+  return value;
 }
 
 // thread-safe allocation to a level
@@ -163,12 +136,15 @@ bool ts_set_assigned_level(char *plate, int level) {
   // ----------
   bool success;
   pthread_mutex_lock(&cars_mutex);
-  int *current_value = (int *)htab_get(cars_ht, null_terminated_plate);
-  if (!current_value) {
-    return false;
+  struct car_levels *current_value =
+      (struct car_levels *)htab_get(cars_ht, null_terminated_plate);
+  struct car_levels new_value = {-1, -1}; // assume failure
+  if (current_value) {
+    new_value = *current_value; // if not fail, update
   }
-  int new_value = SET_ASSIGNED_LEVEL(*current_value, level);
-  success = htab_set(cars_ht, null_terminated_plate, &new_value, sizeof(int));
+  new_value.assigned = level; // set the assigned level
+  success = htab_set(cars_ht, null_terminated_plate, &new_value,
+                     sizeof(struct car_levels));
   pthread_mutex_unlock(&cars_mutex);
   return success;
 }
@@ -182,11 +158,15 @@ bool ts_set_current_level(char *plate, int level) {
   // ----------
   bool success;
   pthread_mutex_lock(&cars_mutex);
-  int *current_value = (int *)htab_get(cars_ht, null_terminated_plate);
-  if (!current_value)
-    return false;
-  int new_value = SET_CURRENT_LEVEL(*current_value, level);
-  success = htab_set(cars_ht, null_terminated_plate, &new_value, sizeof(int));
+  struct car_levels *current_value =
+      (struct car_levels *)htab_get(cars_ht, null_terminated_plate);
+  struct car_levels new_value = {-1, -1}; // assume failure
+  if (current_value) {
+    new_value = *current_value; // if not fail, update
+  }
+  new_value.current = level; // set the assigned level
+  success = htab_set(cars_ht, null_terminated_plate, &new_value,
+                     sizeof(struct car_levels));
   pthread_mutex_unlock(&cars_mutex);
   return success;
 }
@@ -206,12 +186,12 @@ ht_t *ht_from_file(char *filename) {
   char *line = NULL;
   size_t linecap = 0;
   ssize_t linelen;
-  int unassigned = 0xFF;
+  struct car_levels unassigned = {-1, -1};
   while ((linelen = getline(&line, &linecap, fp)) > 0) {
     // null-terminate the plate if not already
     line[6] = '\0';
     // set the value to 0xFF (unassigned)
-    htab_set(ht, line, &unassigned, sizeof(int));
+    htab_set(ht, line, &unassigned, sizeof(struct car_levels));
   }
   free(line);
   return ht;
@@ -264,10 +244,14 @@ void *entry_handler(void *arg) {
       continue;
     }
     // check if the car is in the hashtable (and not already in the car park)
-    int value = ts_get_number_plate(plate);
+    struct car_levels *value = ts_get_number_plate(plate);
 
-    if (GET_ASSIGNED_LEVEL(value) == NO_LEVEL &&
-        GET_CURRENT_LEVEL(value) == NO_LEVEL) { // not already in but allowed
+    if (!value) // not in the hashtable
+    {
+      level = 'X';
+    } else if (value->assigned == -1 &&
+               value->current == -1) // not already in but allowed
+    {
       // update available levels
       available_levels = get_available_levels(available_levels);
       if (available_levels[0] == 0) {
@@ -281,8 +265,7 @@ void *entry_handler(void *arg) {
                                                          // level (integer)
         level = INT_TO_CHAR(level + 1); // level offset by 1 for display
       }
-    } else { // not allowed in the car park (already in or not in the
-             // hashtable)
+    } else { // not allowed in the car park (already in )
       level = 'X';
     }
 
@@ -296,8 +279,10 @@ void *entry_handler(void *arg) {
 
     // Tell the simulator to open the gate if the level is one of the numbers
     if ((level && level >= '0' && level <= '9')) {
-      ts_set_assigned_level(plate, CHAR_TO_INT(level) - 1);
-      ts_set_current_level(plate, NO_LEVEL);
+      ts_set_assigned_level(plate,
+                            CHAR_TO_INT(level) -
+                                1);    // assign them the given level
+      ts_set_current_level(plate, -1); // they aren't on a current level
       pthread_mutex_lock(&entrance->gate.mutex);
       entrance->gate.status = 'R'; // set the gate to rising
       pthread_cond_broadcast(&entrance->gate.condition);
@@ -357,23 +342,23 @@ void *level_handler(void *arg) {
     // read the plate
     char *plate = level->lpr.plate;
     // check if they are entering or exiting
-    int value = ts_get_number_plate(plate);
-    int assigned = GET_ASSIGNED_LEVEL(value);
-    int current = GET_CURRENT_LEVEL(value);
-    if (current != NO_LEVEL) // they are already on a level
+    struct car_levels *value = ts_get_number_plate(plate);
+    int assigned = value->assigned;
+    int current = value->current;
+    if (current != -1) // they are already on a level
     {
       if (current == level_id) // they must be on this level and leaving
       {
         // unassign car from the level
-        ts_set_current_level(plate, NO_LEVEL);
+        ts_set_current_level(plate, -1);
         // decrement the level capacity
         ts_add_cars_to_level(level_id, -1);
       } else // they are on a different level currently ????
       {
         // something went real wrong, they haven't left the level they were on
         printf("Car %.6s teleported to different level, current: %d, "
-               "thislevel: %d, value: %d\n",
-               plate, current, level_id, value);
+               "thislevel: %d, value: c:%d, a:%d\n",
+               plate, current, level_id, value->current, value->assigned);
         exit(EXIT_FAILURE);
       }
     } else if (assigned != level_id) // they aren't assigned to this level
@@ -447,8 +432,8 @@ void *exit_handler(void *arg) {
     }
 
     // car left, unassign them from the carpark.
-    ts_set_assigned_level(plate, NO_LEVEL);
-    ts_set_current_level(plate, NO_LEVEL);
+    ts_set_assigned_level(plate, -1);
+    ts_set_current_level(plate, -1);
 
     // wait 20ms and then tell sim to close the gate, only if we aren't
     // evacuating

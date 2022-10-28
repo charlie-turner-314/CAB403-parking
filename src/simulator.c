@@ -1,9 +1,7 @@
 #include "simulator.h"
-#include "config.h"
 #include "delay.h"
 #include "display.h"
-#include "queue.h"
-#include "shm_parking.h"
+#include "hashtable.h"
 #include "sim_plates.h"
 #include <pthread.h>
 #include <stdint.h>
@@ -14,26 +12,18 @@
 #include <time.h>
 #include <unistd.h>
 
-// number of possible cars at any one time,
-// should be okay having heaps of these, cause most threads are sleeping most of
-// the time. Allow for entire carpark capacity to be filled with cars as well as
-// a large queue
-#define CAR_THREADS (NUM_LEVELS * LEVEL_CAPACITY * 2)
-
 // GLOBALS - should try to avoid these but pretty much every function needs them
 // ----------------------------------------------------
 pthread_mutex_t rand_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex for random
 volatile int run = 1; // Whether the program should continue running
 
-#define FIRE_ROR 1
-#define FIRE_FIXED 2
-#define FIRE_OFF 0
-volatile int fire = FIRE_OFF;       // Whether the fire alarm has been triggered
-                                    // (triggered through input for testing)
-int used_threads = 0;               // number of car threads currently running
+volatile int fire = FIRE_OFF; // Whether the fire alarm has been triggered
+                              // (triggered through input for testing)
+int used_threads = 0; // number of car threads currently running for debug
 pthread_mutex_t used_threads_mutex; // mutex for used_threads
-pthread_mutex_t plate_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex for plate
+
 NumberPlates *plates; // Linked list of number plates
+pthread_mutex_t plate_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex for plate
 
 // CAR UTILITIES
 // ----------------------------------------------------
@@ -119,9 +109,6 @@ void exit_car(ct_data *car_data, int level_id) {
   return;
 }
 
-// Car_handler is given the queue of cars, and takes one when available
-// - deals with the entire lifespan of the car in the carpark
-// - waits for another car in the queue
 void *car_handler(void *arg) {
   Queue *car_queue = (Queue *)arg;
   while (run) {
@@ -201,16 +188,9 @@ void *car_handler(void *arg) {
   return NULL;
 }
 
-// Generate a fire every 5 seconds that lasts for 3 seconds.
-void *temp_sim(void *arg) {
+void *temp_simulator(void *arg) {
   struct SharedMemory *shm = (struct SharedMemory *)arg;
-  // int randTemp = 0;         // a random temperature to put in the shared
-  // memory int regular_cycles = 1;   // number of cycles since last fire int
-  // fire_interval = 2500; // how often to generate a fire int fire_duration =
-  // 1500; // duration to keep a fire on before turning it off int fire_type =
-  // 0;        // 0 for fixed temperature, 1 for ror
-  int16_t
-      randTempChange; // a random temperature change to alter the shared memory
+  int16_t randTempChange;  // a random temperature change to alter temp
   int16_t fixedTempChange; // a specific temperature (e.g from fire to no fire)
   int lastFireType;
   while (run) {
@@ -252,35 +232,6 @@ void *temp_sim(void *arg) {
   return NULL;
 }
 
-void *input_handler() {
-  char input = 'o';
-  // setup terminal to read character without pressing enter
-  struct termios oldt, newt;
-  tcgetattr(STDIN_FILENO, &oldt);
-  newt = oldt;
-  newt.c_lflag &= ~(ICANON);
-  tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-  // setup terminal to not echo input to the screen
-  system("stty -echo");
-
-  while (input != 'q') {
-    input = getchar();
-    if (input == 'r') {
-      fire = FIRE_ROR;
-    } else if (input == 'f') {
-      fire = FIRE_FIXED;
-    } else if (input == 's') {
-      fire = FIRE_OFF;
-    }
-  }
-  // reset terminal
-  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-  system("stty echo");
-
-  run = 0;
-  return NULL;
-}
-
 void *gate_handler(void *arg) {
   struct Boomgate *gate = (struct Boomgate *)arg;
   while (run || used_threads > 0) {
@@ -308,6 +259,35 @@ void *gate_handler(void *arg) {
     pthread_mutex_unlock(&gate->mutex);
   }
   // stopped running and all car threads alive
+  return NULL;
+}
+
+void *input_handler() {
+  char input = 'o';
+  // setup terminal to read character without pressing enter
+  struct termios oldt, newt;
+  tcgetattr(STDIN_FILENO, &oldt);
+  newt = oldt;
+  newt.c_lflag &= ~(ICANON);
+  tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+  // setup terminal to not echo input to the screen
+  system("stty -echo");
+
+  while (input != 'q') {
+    input = getchar();
+    if (input == 'r') {
+      fire = FIRE_ROR;
+    } else if (input == 'f') {
+      fire = FIRE_FIXED;
+    } else if (input == 's') {
+      fire = FIRE_OFF;
+    }
+  }
+  // reset terminal
+  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+  system("stty echo");
+
+  run = 0;
   return NULL;
 }
 
@@ -373,7 +353,7 @@ int main(int argc, char *argv[]) {
 
   // start temperature simulation
   pthread_t temperature;
-  pthread_create(&temperature, NULL, temp_sim, shm);
+  pthread_create(&temperature, NULL, temp_simulator, shm);
 
   while (run) {
     char *plate = random_available_plate(plates);

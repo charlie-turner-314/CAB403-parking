@@ -211,7 +211,6 @@ void *temp_simulator(void *arg) {
       {
         if (lastFireType != FIRE_ROR) {
           fixedTempChange = 20;
-          lastFireType = 1;
         } else {
           fixedTempChange = 0;
           // generate a random temperature change between -1 and 2
@@ -223,7 +222,10 @@ void *temp_simulator(void *arg) {
       // update the temperature
       int16_t currTemp = shm->levels[i].temp;
       int16_t newTemp =
-          fixedTempChange ? fixedTempChange : (currTemp + randTempChange) % 50; // Make sure rate of rise doesnt go above 50c
+          fixedTempChange
+              ? fixedTempChange
+              : (currTemp + randTempChange) %
+                    50; // Make sure rate of rise doesnt go above 50c
       shm->levels[i].temp = newTemp < 99 ? newTemp : 99;
     }
     lastFireType = fire;

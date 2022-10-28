@@ -86,7 +86,7 @@ void *temp_monitor(void *arg) {
 
   size_t level_id = (size_t)arg;
   int level = (int)level_id;
-  printf("Monitoring temperature on level %d\n", level);
+  printf("Monitoring temperature on level %d\n", (level+1));
 
   while (true) {
     int hightemps = 0;
@@ -107,7 +107,9 @@ void *temp_monitor(void *arg) {
     // this is considered a high temperature. Raise the alarm
     if ((hightemps >= 30 * 0.9) && emptyReadings == 0) {
       alarm_active = 1;
-    } else {
+    } else if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) && (emptyReadings == 0)){
+      alarm_active = 1;
+    }else {
       alarm_active = 0;
     }
 

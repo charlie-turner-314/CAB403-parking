@@ -1,15 +1,9 @@
 #include "delay.h"
 #include "logging.h"
-#include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
 #include <shm_parking.h>
-#include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 static struct SharedMemory *shm;
 static int alarm_active = 0;

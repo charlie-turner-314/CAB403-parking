@@ -35,6 +35,7 @@ main: $(foreach SRC, $(filter src/%, $(SRCS)), $(MAIN_EXEC_DIR)/$(notdir $(SRC:.
 	@echo "\033[0;32m Simulator: ./build/bin/simulator\033[0m"
 	@echo "\033[0;34m   Manager: ./build/bin/manager\033[0m"
 	@echo "\033[0;31m Firealarm: ./build/bin/firealarm\033[0m\n"
+	@echo "Change the carpark configuration at \033[0;33msrc/config.h\033[0m"
 	@echo "Make and Run tests with: \033[0;33mmake all\033[0m"
 
 all: main runtests

@@ -88,7 +88,7 @@ void park_car(ct_data *car_data, int level_id) {
   send_licence_plate(car_data->plate, &car_data->shm->levels[level_id].lpr);
 
   // stay parked for 100-1000ms
-  rand_delay_ms(100, 1000, &rand_mutex);
+  rand_delay_ms(100, MAX_PARK_TIME, &rand_mutex);
 }
 
 void exit_car(ct_data *car_data, int level_id) {

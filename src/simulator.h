@@ -114,4 +114,4 @@ Handle any user input from the command line
 
     - `s` to stop any fire
 */
-//void *input_handler();
+// void *input_handler();

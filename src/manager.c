@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
-#include <time.h>
 #include <unistd.h>
 
 // struct for holding assigned and current car level
@@ -381,7 +380,8 @@ void *level_handler(void *arg) {
       ts_set_current_level(plate, level_id);
     }
 
-    // clear the lpr
+    // clear the lpr after 20ms so it flashes on the screen
+    delay_ms(20);
     pthread_mutex_lock(&level->lpr.mutex);
     memset(level->lpr.plate, '\0', 6);
     pthread_cond_broadcast(&level->lpr.condition);
@@ -552,6 +552,7 @@ int main(int argc, char *argv[]) {
     exit_threads[i] = thread;
   }
 
+  pthread_t display_thread = NULL;
   // don't run the display if we don't want it
   if (argc < 2 || strcmp(argv[1], "nodisp") != 0) {
     ManDisplayData display_data;
@@ -559,7 +560,7 @@ int main(int argc, char *argv[]) {
     display_data.ht_mutex = &capacity_mutex;
     display_data.shm = shm;
     display_data.billing_total = &total_bill;
-    pthread_t display_thread;
+    display_data.run = &run;
     pthread_create(&display_thread, NULL, man_display_handler, &display_data);
   }
 
@@ -567,8 +568,12 @@ int main(int argc, char *argv[]) {
   pthread_t input_thread;
   pthread_create(&input_thread, NULL, input_handler, NULL);
 
-  pthread_join(input_thread, NULL);
-  // signal all the possible waitings
+  pthread_join(input_thread, NULL);   // wait for input thread to finish
+  pthread_join(display_thread, NULL); // wait for display thread to finish
+
+  printf("Exiting...\n");
+
+  // signal all the possible waitings after input thread
   int num_lprs = NUM_ENTRANCES + NUM_LEVELS + NUM_EXITS;
   for (int i = 0; i < num_lprs; i++) {
     if (i < NUM_ENTRANCES) {

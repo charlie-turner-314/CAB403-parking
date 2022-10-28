@@ -1,27 +1,23 @@
 #include "delay.h"
+#include "logging.h"
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
 #include <shm_parking.h>
-#include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/types.h>
-#include <time.h>
 #include <unistd.h>
 
-struct SharedMemory *shm;
-
-pthread_mutex_t alarm_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t alarm_condvar = PTHREAD_COND_INITIALIZER;
-
-int alarm_active = 0;
-int temps[NUM_LEVELS][5];           // 2D array to calc median value
-int smoothed_temps[NUM_LEVELS][30]; // 2D array to store smoothed median values
+static struct SharedMemory *shm;
+static int alarm_active = 0;
+static int smoothed_temps[NUM_LEVELS]
+                         [30]; // 2D array to store smoothed median values
 
 // switches index of 2 array elements
-void elementSwap(int *element1, int *element2) {
+static void elementSwap(int *element1, int *element2) {
   int temp;
 
   temp = *element1;
@@ -30,68 +26,89 @@ void elementSwap(int *element1, int *element2) {
 }
 
 // ASC array sort
-void arrSort(int arr[], int arrLen) {
-  for (int i = 0; i < arrLen - 1; i++) {
-    for (int j = 0; j < arrLen - i - 1; j++) {
-      if (arr[j] > arr[j + 1])
+static void arrSort(int arr[], int arrLen) {
+  for (int i = 0; i < (arrLen - 1); i++) {
+    for (int j = 0; j < (arrLen - i - 1); j++) {
+      if (arr[j] > arr[j + 1]) {
         elementSwap(&arr[j], &arr[j + 1]);
+      }
     }
   }
 }
 
 // find median value in raw temperature array
-int median_calc(int level) {
+static int median_calc(int level, int temps[5]) {
   int rawTemp = shm->levels[level].temp; // get new temp from shm
+  int median = -1;
 
-  memmove(&temps[level][0], &temps[level][1],
-          4 * sizeof(temps[level][0])); // shift temps up in array
-  temps[level][4] = rawTemp;            // push newTemp to array
+  // shift temps left in array
+  void *dest =
+      memmove(&temps[0], &temps[1], (unsigned long)4 * sizeof(temps[0]));
+  if (!dest) {
+    // something went wrong
+    log_print_string("memmove failed");
+  } else {
+    temps[4] = rawTemp; // push newTemp to array
 
-  // check that no empty values in array
-  for (int i = 0; i < 5; i++) {
-    if (temps[level][i] == INT_MIN) {
-      // can't calc median value yet
-      return -1;
+    int hasFiveTemps = 1; // assume we can calc median
+    // check that no empty values in array
+    for (int i = 0; i < 5; i++) {
+      if (temps[i] == INT_MIN) {
+        // can't calc median value yet
+        hasFiveTemps = 0;
+      }
+    }
+
+    if (hasFiveTemps == 1) {
+      // median value can be calculated
+      int tempsCopy[5];
+      void *dest = memcpy(tempsCopy, temps,
+                          (unsigned long)5 *
+                              sizeof(int)); // make copy of array for sorting
+      if (!dest) {
+        // something went wrong
+        log_print_string("memcpy failed\n");
+        median = -1;
+      } else {
+        arrSort(tempsCopy, 5); // sort in asc first
+        median = tempsCopy[2]; // median is mid index
+      }
     }
   }
-
-  // median value can be calculated
-  int tempsCopy[5];
-  memcpy(tempsCopy, temps[level],
-         sizeof(temps[level])); // make copy of array for sorting
-  arrSort(tempsCopy, 5);        // sort in asc first
-  int median = tempsCopy[2];    // median is mid index
   return median;
 }
 
 // handles smoothed temperatures array
-void smoothedTemp_handler(int level) {
+static void smoothedTemp_handler(int level, int median) {
   // add median to smoothed array
-  int median = median_calc(level);
   if (median != -1) {
-    memmove(&smoothed_temps[level][0], &smoothed_temps[level][1],
-            29 * sizeof(int));          // shift temps up in array
-    smoothed_temps[level][29] = median; // push median to array
+    void *dest =
+        memmove(&smoothed_temps[level][0], &smoothed_temps[level][1],
+                (unsigned long)29 * sizeof(int)); // shift temps up in array
+    if (!dest) {
+      // something went wrong
+      log_print_string("memmove failed\n");
+    } else {
+      smoothed_temps[level][29] = median; // push median to array
+    }
   }
 }
 
 // monitorr the temperatures for conditions
-void *temp_monitor(void *arg) {
-  // init smoothed temps array with non-existing temperature value using INT_MIN
-  for (int i = 0; i < NUM_LEVELS; i++) {
-    for (int j = 0; j < 30; j++) {
-      smoothed_temps[i][j] = INT_MIN;
-    }
-  }
+static void *temp_monitor(void *arg) {
+  // MISRA 11.5: Convert pointer to size
+  // Cannot be avoided in the case of pthreads
+  size_t level_id = *(size_t *)arg;
+  int temps[5] = {INT_MIN, INT_MIN, INT_MIN, INT_MIN,
+                  INT_MIN}; // array to calc median value for the level
 
-  size_t level_id = (size_t)arg;
-  int level = (int)level_id;
-  printf("Monitoring temperature on level %d\n", (level+1));
-
+  size_t level = level_id;
+  log_print_string("Starting temperature monitor for all levels\n");
   while (true) {
     int hightemps = 0;
     int emptyReadings = 0;
-    smoothedTemp_handler(level);
+    int median = median_calc(level, temps);
+    smoothedTemp_handler(level, median);
     // fixed temperature fire detection
     for (int i = 0; i < 30; i++) {
       // Temperatures of 58 degrees and higher are a concern
@@ -101,15 +118,19 @@ void *temp_monitor(void *arg) {
                  INT_MIN) // check if array is valid i.e full with temp readings
       {
         emptyReadings++;
+      } else {
+        // no fire
       }
     }
+
     // If 90% of the last 30 temperatures are >= 58 degrees,
     // this is considered a high temperature. Raise the alarm
-    if ((hightemps >= 30 * 0.9) && emptyReadings == 0) {
+    if (((hightemps >= (30 * 0.9))) && (emptyReadings == 0)) {
       alarm_active = 1;
-    } else if ((smoothed_temps[level][29] - smoothed_temps[level][0] >= 8) && (emptyReadings == 0)){ //ROR raise the alarm
+    } else if (((smoothed_temps[level][29] - smoothed_temps[level][0]) >= 8) &&
+               (emptyReadings == 0)) { // ROR raise the alarm
       alarm_active = 1;
-    }else {
+    } else {
       alarm_active = 0;
     }
     delay_ms(2);
@@ -118,7 +139,7 @@ void *temp_monitor(void *arg) {
 }
 
 // opens all entrance and exit boomgates
-void openboomgate(int level) {
+static void openboomgate(int level) {
   pthread_mutex_lock(&shm->entrances[level].gate.mutex);
   shm->entrances[level].gate.status = 'O'; // set entrance gates to open
   pthread_mutex_unlock(&shm->entrances[level].gate.mutex);
@@ -127,23 +148,32 @@ void openboomgate(int level) {
   pthread_mutex_unlock(&shm->exits[level].gate.mutex);
 }
 
-int main() {
-  printf("Firealarm System Running\n");
-  fflush(stdout);
+int main(void) {
   shm = get_shm(SHM_NAME); // get the shared memory object
 
   pthread_t level_threads[NUM_LEVELS];
   // create temperature monitoring threads
-  for (size_t i = 0; i < NUM_LEVELS; i++) {
-    pthread_create(&level_threads[i], NULL, temp_monitor, (void *)i);
+  for (size_t i = 0; i < (size_t)NUM_LEVELS; i++) {
+    // MISRA 11.6: Cast from void pointer to int
+    // Cannot be avoided in the case of pthreads
+    size_t level = i;
+    pthread_create(&level_threads[i], NULL, temp_monitor, &level);
   }
   int8_t printed_deactivated = 1; // don't print deactivated on first read
   int8_t printed_activated = 0;
 
+  // init smoothed temps array with non-existing temperature value using INT_MIN
+  for (int i = 0; i < (int)NUM_LEVELS; i++) {
+    for (int j = 0; j < 30; j++) {
+      smoothed_temps[i][j] = INT_MIN;
+    }
+  }
+
+  log_print_string("Firealarm System Running\n");
   while (1) {
     if (alarm_active == 1) {
       if (!printed_activated) {
-        fprintf(stderr, "*** ALARM ACTIVE ***\n");
+        log_raise_alarm();
         printed_activated = 1;
         printed_deactivated = 0;
       }
@@ -156,18 +186,18 @@ int main() {
       }
 
       // Show evacuation message on an endless loop
-      char *evacmessage = "EVACUATE ";
-      for (char *p = evacmessage; *p != '\0'; p++) {
-        for (int i = 0; i < NUM_ENTRANCES; i++) {
-          pthread_mutex_lock(&shm->entrances[i].sign.mutex);
-          shm->entrances[i].sign.display = *p;
-          pthread_mutex_unlock(&shm->entrances[i].sign.mutex);
+      const char evacmessage[9] = "EVACUATE ";
+      for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < NUM_ENTRANCES; j++) {
+          pthread_mutex_lock(&shm->entrances[j].sign.mutex);
+          shm->entrances[j].sign.display = evacmessage[i];
+          pthread_mutex_unlock(&shm->entrances[j].sign.mutex);
         }
         delay_ms(20); // update sign with new letter every 20ms
       }
     } else {
       if (!printed_deactivated) {
-        fprintf(stderr, "*** ALARM DEACTIVATED ***\n");
+        log_stop_alarm();
         printed_deactivated = 1;
         printed_activated = 0;
       }
@@ -182,8 +212,8 @@ int main() {
   for (int i = 0; i < NUM_LEVELS; i++) {
     int jres = pthread_join(level_threads[i], NULL);
     if (jres != 0) {
-      perror("Error joining thread");
-      exit(EXIT_FAILURE);
+      log_print_string("Error joining thread");
+      break;
     }
   }
 }

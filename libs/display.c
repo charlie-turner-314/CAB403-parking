@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 
 #define ANSI_CTRL_CLEAR "\x1B[2J"
@@ -35,7 +34,7 @@ void *man_display_handler(void *arg) {
   puts(ANSI_CTRL_HOME);
   ManDisplayData *data = (ManDisplayData *)arg;
   struct SharedMemory *shm = data->shm;
-  while (true) {
+  while (*data->run) {
     // clear the screen
     printf(ANSI_CTRL_CLEAR);
     printf(ANSI_CTRL_HOME);

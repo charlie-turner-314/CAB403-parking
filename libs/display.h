@@ -8,6 +8,7 @@ typedef struct ManDisplayData {
   ht_t *ht;                  // hashtable of car positions
   pthread_mutex_t *ht_mutex; // mutex for the hashtable
   float *billing_total;      // Billing total
+  volatile int *run;         // pointer to the run variable
 } ManDisplayData;
 
 typedef struct SimDisplayData {
